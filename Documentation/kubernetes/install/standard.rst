@@ -78,7 +78,7 @@ of the machine.
 
 .. code:: bash
 
-	mount bpffs /sys/fs/bpf -t bpf
+	mount bpffs /sys/fs/bpf -t bpf -o defaults,nosuid,nodev,noexec,relatime,mode=700
 
 A portable way to achieve this with persistence is to add the following line to
 ``/etc/fstab`` and then run ``mount /sys/fs/bpf``. This will cause the
@@ -86,10 +86,7 @@ filesystem to be automatically mounted when the node boots.
 
 .. code:: bash
 
-     bpffs			/sys/fs/bpf		bpf	defaults 0 0
-
-If you are using systemd to manage the kubelet, see the section
-:ref:`bpffs_systemd`.
+     bpffs			/sys/fs/bpf		bpf	defaults,nosuid,nodev,noexec,relatime,mode=700 0 0
 
 Enable automatic node CIDR allocation (Recommended)
 ---------------------------------------------------
@@ -557,32 +554,6 @@ will return an error, e.g.:
 In this case, the policy has a port out of the 0-65535 range.
 
 .. _bpffs_systemd:
-
-Mounting BPFFS with systemd
----------------------------
-
-Due to how systemd `mounts
-<https://unix.stackexchange.com/questions/283442/systemd-mount-fails-where-setting-doesnt-match-unit-name>`__
-filesystems, the mount point path must be reflected in the unit filename.
-
-.. code:: bash
-
-        cat <<EOF | sudo tee /etc/systemd/system/sys-fs-bpf.mount
-        [Unit]
-        Description=Cilium BPF mounts
-        Documentation=http://docs.cilium.io/
-        DefaultDependencies=no
-        Before=local-fs.target umount.target
-        After=swap.target
-
-        [Mount]
-        What=bpffs
-        Where=/sys/fs/bpf
-        Type=bpf
-
-        [Install]
-        WantedBy=multi-user.target
-        EOF
 
 Deploying to selected nodes
 ---------------------------
