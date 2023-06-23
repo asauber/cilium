@@ -49,6 +49,11 @@ import (
 	"github.com/cilium/cilium/pkg/source"
 )
 
+var metricsmapBPFPromSyncControllerGroup = controller.ControllerGroup{
+	Name:           "metricsmap-bpf-prom-sync",
+	MetricsEnabled: false,
+}
+
 // LocalConfig returns the local configuration of the daemon's nodediscovery.
 func (d *Daemon) LocalConfig() *datapath.LocalNodeConfiguration {
 	d.nodeDiscovery.WaitForLocalNodeInit()
@@ -422,9 +427,9 @@ func (d *Daemon) initMaps() error {
 
 	// Start the controller for periodic sync of the metrics map with
 	// the prometheus server.
-	controller.NewManager().UpdateController("metricsmap-bpf-prom-sync",
+	controller.NewManager().UpdateController(
+		metricsmapBPFPromSyncControllerGroup, "metricsmap-bpf-prom-sync",
 		controller.ControllerParams{
-			Group:       "metricsmap-bpf-prom-sync",
 			DoFunc:      metricsmap.SyncMetricsMap,
 			RunInterval: 5 * time.Second,
 			Context:     d.ctx,

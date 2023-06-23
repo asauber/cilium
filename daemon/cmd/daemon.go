@@ -1210,10 +1210,14 @@ func newDaemon(ctx context.Context, cleaner *daemonCleanup, params *daemonParams
 	// controller is to ensure that endpoints and host IPs entries are
 	// reinserted to the bpf maps if they are ever removed from them.
 	syncErrs := make(chan error, 1)
+	var syncHostIPsControllerGroup = controller.ControllerGroup{
+		Name:           "sync-host-ips",
+		MetricsEnabled: true,
+	}
 	d.controllers.UpdateController(
+		syncHostIPsControllerGroup,
 		syncHostIPsController,
 		controller.ControllerParams{
-			Group: syncHostIPsController,
 			DoFunc: func(ctx context.Context) error {
 				err := d.syncHostIPs()
 				select {

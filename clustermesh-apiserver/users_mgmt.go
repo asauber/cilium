@@ -34,6 +34,11 @@ var usersManagementCell = cell.Module(
 	cell.Invoke(registerUsersManager),
 )
 
+var usersManagementControllerGroup = controller.ControllerGroup{
+	Name:           "clustermesh-users-management",
+	MetricsEnabled: false,
+}
+
 type UsersManagementConfig struct {
 	ClusterUsersEnabled    bool
 	ClusterUsersConfigPath string
@@ -96,8 +101,7 @@ func (us *usersManager) Start(hive.HookContext) error {
 		return fmt.Errorf("unable to setup config watcher: %w", err)
 	}
 
-	us.manager.UpdateController(usersMgmtCtrl, controller.ControllerParams{
-		Group:   usersMgmtCtrl,
+	us.manager.UpdateController(usersManagementControllerGroup, usersMgmtCtrl, controller.ControllerParams{
 		Context: context.Background(),
 		DoFunc:  us.sync,
 	})

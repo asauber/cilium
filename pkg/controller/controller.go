@@ -41,14 +41,17 @@ func NewExitReason(reason string) ExitReason {
 	return ExitReason{errors.New(reason)}
 }
 
+// ControllerGroup contains metadata about a group of controllers
+type ControllerGroup struct {
+	// Name of the controller group. Often, this name is the same as the controller name.
+	Name string
+
+	// MetricsEnabled when set to true, enables group-level metrics for controllers in the group.
+	MetricsEnabled bool
+}
+
 // ControllerParams contains all parameters of a controller
 type ControllerParams struct {
-	// Group is an aggregate name for the type of controller.
-	// Group is used to aggregate metrics for controllers with a dynamic name based on ID.
-	// If Group is not provided then the controller will not report per-group metrics.
-	// Usually, Group matches the name parameter.
-	Group string
-
 	// DoFunc is the function that will be run until it succeeds and/or
 	// using the interval RunInterval if not 0.
 	// An unset DoFunc is an error and will be logged as one.
@@ -138,8 +141,8 @@ func NoopFunc(ctx context.Context) error {
 //     check for the destruction throughout the run.
 type controller struct {
 	// Constant after creation, safe to access without locking
+	group ControllerGroup
 	name  string
-	group string
 	uuid  string
 
 	// Channels written to and/or closed by the manager
@@ -326,8 +329,8 @@ func (c *controller) recordError(err error) {
 	c.consecutiveErrors++
 
 	metrics.ControllerRuns.WithLabelValues(failure).Inc()
-	if c.group != "" {
-		metrics.ControllerGroupRuns.WithLabelValues(c.group, failure).Inc()
+	if c.group.MetricsEnabled {
+		metrics.ControllerGroupRuns.WithLabelValues(c.group.Name, failure).Inc()
 	}
 	metrics.ControllerRunsDuration.WithLabelValues(failure).Observe(c.lastDuration.Seconds())
 }
@@ -341,8 +344,8 @@ func (c *controller) recordSuccess() {
 	c.consecutiveErrors = 0
 
 	metrics.ControllerRuns.WithLabelValues(success).Inc()
-	if c.group != "" {
-		metrics.ControllerGroupRuns.WithLabelValues(c.group, success).Inc()
+	if c.group.MetricsEnabled {
+		metrics.ControllerGroupRuns.WithLabelValues(c.group.Name, success).Inc()
 	}
 	metrics.ControllerRunsDuration.WithLabelValues(success).Observe(c.lastDuration.Seconds())
 }
