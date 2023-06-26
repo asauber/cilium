@@ -256,6 +256,7 @@ func (ipc *IPCache) ReleaseCIDRIdentitiesByID(ctx context.Context, identities []
 	prefixes := make([]string, 0, len(identities))
 	for _, nid := range identities {
 		if id := ipc.IdentityAllocator.LookupIdentityByID(ctx, nid); id != nil {
+			// TODO: Check, is this a reserved Identity?
 			prefix, ok := cidrLabelToPrefix(id.CIDRLabel.String())
 			if !ok {
 				log.WithFields(logrus.Fields{
