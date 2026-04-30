@@ -14,6 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
+	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 )
 
@@ -33,17 +34,10 @@ func EnqueueRequestForOwningListenerSet(c client.Client, logger *slog.Logger, co
 			},
 		)
 
-		gwName := string(ls.Spec.ParentRef.Name)
-		gwNamespace := ls.GetNamespace()
-		if ls.Spec.ParentRef.Namespace != nil {
-			gwNamespace = string(*ls.Spec.ParentRef.Namespace)
-		}
+		gwNN := helpers.ListenerSetParentGateway(ls)
 
 		gw := &gatewayv1.Gateway{}
-		if err := c.Get(ctx, types.NamespacedName{
-			Namespace: gwNamespace,
-			Name:      gwName,
-		}, gw); err != nil {
+		if err := c.Get(ctx, *gwNN, gw); err != nil {
 			if !k8serrors.IsNotFound(err) {
 				scopedLog.ErrorContext(ctx, "Failed to get Gateway for ListenerSet", logfields.Error, err)
 			}
@@ -57,16 +51,13 @@ func EnqueueRequestForOwningListenerSet(c client.Client, logger *slog.Logger, co
 
 		scopedLog.InfoContext(ctx,
 			"Enqueued gateway for ListenerSet",
-			logfields.K8sNamespace, gwNamespace,
-			logfields.Gateway, gwName,
+			logfields.K8sNamespace, gwNN.Namespace,
+			logfields.Gateway, gwNN.Name,
 		)
 
 		return []reconcile.Request{
 			{
-				NamespacedName: types.NamespacedName{
-					Namespace: gwNamespace,
-					Name:      gwName,
-				},
+				NamespacedName: *gwNN,
 			},
 		}
 	})

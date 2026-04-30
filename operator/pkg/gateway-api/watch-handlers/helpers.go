@@ -35,10 +35,10 @@ func updateReconcileRequestsForParentRefs(ctx context.Context, c client.Client, 
 		}
 
 		if helpers.IsListenerSet(parent) {
-			gwName := resolveListenerSetToGateway(ctx, c, string(parent.Name), helpers.NamespaceDerefOr(parent.Namespace, ns))
-			if gwName != nil {
-				if _, found := allGatewaysSet[gwName.String()]; found {
-					rrSet[reconcile.Request{NamespacedName: *gwName}] = struct{}{}
+			gwNN := helpers.ResolveListenerSetToGateway(ctx, c, string(parent.Name), helpers.NamespaceDerefOr(parent.Namespace, ns))
+			if gwNN != nil {
+				if _, found := allGatewaysSet[gwNN.String()]; found {
+					rrSet[reconcile.Request{NamespacedName: *gwNN}] = struct{}{}
 				}
 			}
 		}
@@ -86,7 +86,7 @@ func getGatewayReconcileRequestsForRoute(ctx context.Context, c client.Client, o
 				Name:      string(parent.Name),
 			}
 		case helpers.IsListenerSet(parent):
-			resolved := resolveListenerSetToGateway(ctx, c, string(parent.Name), helpers.NamespaceDerefOr(parent.Namespace, object.GetNamespace()))
+			resolved := helpers.ResolveListenerSetToGateway(ctx, c, string(parent.Name), helpers.NamespaceDerefOr(parent.Namespace, object.GetNamespace()))
 			if resolved == nil {
 				continue
 			}
@@ -120,28 +120,6 @@ func getGatewayReconcileRequestsForRoute(ctx context.Context, c client.Client, o
 	}
 
 	return reqs
-}
-
-// resolveListenerSetToGateway looks up a ListenerSet and returns the NamespacedName of its parent Gateway,
-// or nil if the ListenerSet cannot be found.
-func resolveListenerSetToGateway(ctx context.Context, c client.Client, lsName string, lsNamespace string) *types.NamespacedName {
-	ls := &gatewayv1.ListenerSet{}
-	if err := c.Get(ctx, types.NamespacedName{
-		Namespace: lsNamespace,
-		Name:      lsName,
-	}, ls); err != nil {
-		return nil
-	}
-
-	gwNamespace := ls.GetNamespace()
-	if ls.Spec.ParentRef.Namespace != nil {
-		gwNamespace = string(*ls.Spec.ParentRef.Namespace)
-	}
-
-	return &types.NamespacedName{
-		Namespace: gwNamespace,
-		Name:      string(ls.Spec.ParentRef.Name),
-	}
 }
 
 func getAllCiliumGatewaysSet(ctx context.Context, c client.Client) (map[string]struct{}, error) {

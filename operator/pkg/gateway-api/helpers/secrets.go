@@ -53,15 +53,7 @@ func GetGatewaysForSecret(ctx context.Context, c client.Client, obj client.Objec
 		for _, ls := range lsList.Items {
 			for _, entry := range ls.Spec.Listeners {
 				if listenerReferencesSecret(entry.TLS, ls.GetNamespace(), obj) {
-					// Resolve to parent Gateway
-					gwNamespace := ls.GetNamespace()
-					if ls.Spec.ParentRef.Namespace != nil {
-						gwNamespace = string(*ls.Spec.ParentRef.Namespace)
-					}
-					gwNN := types.NamespacedName{
-						Namespace: gwNamespace,
-						Name:      string(ls.Spec.ParentRef.Name),
-					}
+					gwNN := *ListenerSetParentGateway(&ls)
 					if _, ok := seen[gwNN]; ok {
 						break
 					}
