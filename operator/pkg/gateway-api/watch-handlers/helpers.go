@@ -21,17 +21,26 @@ import (
 )
 
 // updateReconcileRequestsForParentRefs mutates the passed reconcile.Request set to add all
-func updateReconcileRequestsForParentRefs(parentRefs []gatewayv1.ParentReference, ns string, allGatewaysSet map[string]struct{}, rrSet map[reconcile.Request]struct{}) {
+func updateReconcileRequestsForParentRefs(ctx context.Context, c client.Client, parentRefs []gatewayv1.ParentReference, ns string, allGatewaysSet map[string]struct{}, rrSet map[reconcile.Request]struct{}) {
 	for _, parent := range parentRefs {
-		if !helpers.IsGateway(parent) {
+		if helpers.IsGateway(parent) {
+			parentFullName := types.NamespacedName{
+				Name:      string(parent.Name),
+				Namespace: helpers.NamespaceDerefOr(parent.Namespace, ns),
+			}
+			if _, found := allGatewaysSet[parentFullName.String()]; found {
+				rrSet[reconcile.Request{NamespacedName: parentFullName}] = struct{}{}
+			}
 			continue
 		}
-		parentFullName := types.NamespacedName{
-			Name:      string(parent.Name),
-			Namespace: helpers.NamespaceDerefOr(parent.Namespace, ns),
-		}
-		if _, found := allGatewaysSet[parentFullName.String()]; found {
-			rrSet[reconcile.Request{NamespacedName: parentFullName}] = struct{}{}
+
+		if helpers.IsListenerSet(parent) {
+			gwName := resolveListenerSetToGateway(ctx, c, string(parent.Name), helpers.NamespaceDerefOr(parent.Namespace, ns))
+			if gwName != nil {
+				if _, found := allGatewaysSet[gwName.String()]; found {
+					rrSet[reconcile.Request{NamespacedName: *gwName}] = struct{}{}
+				}
+			}
 		}
 	}
 }
@@ -68,17 +77,26 @@ func getGatewayReconcileRequestsForRoute(ctx context.Context, c client.Client, o
 	)
 
 	for _, parent := range route.ParentRefs {
-		if !helpers.IsGateway(parent) {
+		var gwNN types.NamespacedName
+
+		switch {
+		case helpers.IsGateway(parent):
+			gwNN = types.NamespacedName{
+				Namespace: helpers.NamespaceDerefOr(parent.Namespace, object.GetNamespace()),
+				Name:      string(parent.Name),
+			}
+		case helpers.IsListenerSet(parent):
+			resolved := resolveListenerSetToGateway(ctx, c, string(parent.Name), helpers.NamespaceDerefOr(parent.Namespace, object.GetNamespace()))
+			if resolved == nil {
+				continue
+			}
+			gwNN = *resolved
+		default:
 			continue
 		}
 
-		ns := helpers.NamespaceDerefOr(parent.Namespace, object.GetNamespace())
-
 		gw := &gatewayv1.Gateway{}
-		if err := c.Get(ctx, types.NamespacedName{
-			Namespace: ns,
-			Name:      string(parent.Name),
-		}, gw); err != nil {
+		if err := c.Get(ctx, gwNN, gw); err != nil {
 			if !k8serrors.IsNotFound(err) {
 				scopedLog.ErrorContext(ctx, "Failed to get Gateway", logfields.Error, err)
 			}
@@ -92,19 +110,38 @@ func getGatewayReconcileRequestsForRoute(ctx context.Context, c client.Client, o
 
 		scopedLog.InfoContext(ctx,
 			"Enqueued gateway for Route",
-			logfields.K8sNamespace, ns,
-			logfields.ParentResource, parent.Name,
+			logfields.K8sNamespace, gwNN.Namespace,
+			logfields.ParentResource, gwNN.Name,
 			logfields.Route, object.GetName())
 
 		reqs = append(reqs, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Namespace: ns,
-				Name:      string(parent.Name),
-			},
+			NamespacedName: gwNN,
 		})
 	}
 
 	return reqs
+}
+
+// resolveListenerSetToGateway looks up a ListenerSet and returns the NamespacedName of its parent Gateway,
+// or nil if the ListenerSet cannot be found.
+func resolveListenerSetToGateway(ctx context.Context, c client.Client, lsName string, lsNamespace string) *types.NamespacedName {
+	ls := &gatewayv1.ListenerSet{}
+	if err := c.Get(ctx, types.NamespacedName{
+		Namespace: lsNamespace,
+		Name:      lsName,
+	}, ls); err != nil {
+		return nil
+	}
+
+	gwNamespace := ls.GetNamespace()
+	if ls.Spec.ParentRef.Namespace != nil {
+		gwNamespace = string(*ls.Spec.ParentRef.Namespace)
+	}
+
+	return &types.NamespacedName{
+		Namespace: gwNamespace,
+		Name:      string(ls.Spec.ParentRef.Name),
+	}
 }
 
 func getAllCiliumGatewaysSet(ctx context.Context, c client.Client) (map[string]struct{}, error) {
