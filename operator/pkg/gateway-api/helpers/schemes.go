@@ -29,11 +29,13 @@ var RequiredGVKs = []schema.GroupVersionKind{
 
 var AllOptionalKinds = []schema.GroupVersionKind{
 	gatewayv1.SchemeGroupVersion.WithKind(TLSRouteKind),
+	gatewayv1.SchemeGroupVersion.WithKind(ListenerSetKind),
 	mcsapiv1beta1.SchemeGroupVersion.WithKind(ServiceImportKind),
 }
 
 var NoMCSOptionalKinds = []schema.GroupVersionKind{
 	gatewayv1.SchemeGroupVersion.WithKind(TLSRouteKind),
+	gatewayv1.SchemeGroupVersion.WithKind(ListenerSetKind),
 }
 
 func TestScheme(installedGVKs []schema.GroupVersionKind) *runtime.Scheme {
