@@ -164,6 +164,12 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				}
 			}
 		}
+
+		// Deduplicate routes that may appear in both Gateway and ListenerSet indices
+		// (e.g., a route with both Gateway and ListenerSet parentRefs).
+		httpRouteList.Items = deduplicateHTTPRoutes(httpRouteList.Items)
+		grpcRouteList.Items = deduplicateGRPCRoutes(grpcRouteList.Items)
+		tlsRouteList.Items = deduplicateTLSRoutes(tlsRouteList.Items)
 	}
 
 	btlspList := &gatewayv1.BackendTLSPolicyList{}
@@ -484,9 +490,11 @@ func (r *gatewayReconciler) buildMergedListeners(ctx context.Context, scopedLog 
 			UID:       string(ls.GetUID()),
 		}
 		for _, entry := range ls.Spec.Listeners {
+			listener := helpers.ListenerEntryToListener(entry)
 			merged = append(merged, ingestion.ListenerWithContext{
-				Listener: helpers.ListenerEntryToListener(entry),
-				Source:   lsSource,
+				Listener:          listener,
+				Source:            lsSource,
+				AllowedNamespaces: resolveAllowedNamespaces(ctx, r.Client, gw, listener, scopedLog),
 			})
 		}
 	}
@@ -504,6 +512,34 @@ func (r *gatewayReconciler) filterHTTPRoutesByGateway(ctx context.Context, gw *g
 		}
 	}
 	return filtered
+}
+
+// resolveAllowedNamespaces resolves a listener's allowedRoutes.namespaces policy
+// into a set of namespace names. Returns nil to indicate all namespaces are allowed.
+func resolveAllowedNamespaces(ctx context.Context, c client.Client, gw *gatewayv1.Gateway, listener gatewayv1.Listener, logger *slog.Logger) map[string]struct{} {
+	if listener.AllowedRoutes == nil || listener.AllowedRoutes.Namespaces == nil || listener.AllowedRoutes.Namespaces.From == nil {
+		// Default: same namespace as Gateway
+		return map[string]struct{}{gw.GetNamespace(): {}}
+	}
+	switch *listener.AllowedRoutes.Namespaces.From {
+	case gatewayv1.NamespacesFromAll:
+		return nil
+	case gatewayv1.NamespacesFromSame:
+		return map[string]struct{}{gw.GetNamespace(): {}}
+	case gatewayv1.NamespacesFromSelector:
+		nsList := &corev1.NamespaceList{}
+		selector, _ := metav1.LabelSelectorAsSelector(listener.AllowedRoutes.Namespaces.Selector)
+		if err := c.List(ctx, nsList, client.MatchingLabelsSelector{Selector: selector}); err != nil {
+			logger.ErrorContext(ctx, "Unable to list namespaces for listener", logfields.Error, err)
+			return map[string]struct{}{gw.GetNamespace(): {}}
+		}
+		allowed := make(map[string]struct{})
+		for _, ns := range nsList.Items {
+			allowed[ns.Name] = struct{}{}
+		}
+		return allowed
+	}
+	return map[string]struct{}{gw.GetNamespace(): {}}
 }
 
 func (r *gatewayReconciler) filterGRPCRoutesByGateway(ctx context.Context, gw *gatewayv1.Gateway, attachedListenerSets []gatewayv1.ListenerSet, routes []gatewayv1.GRPCRoute) []gatewayv1.GRPCRoute {
@@ -1443,6 +1479,45 @@ type listenerSetRouteInput struct {
 func (l *listenerSetRouteInput) GetGateway(parent gatewayv1.ParentReference) (*gatewayv1.Gateway, error) {
 	// For the ListenerSet parentRef, return our synthetic Gateway
 	return l.syntheticGW, nil
+}
+
+// deduplicateHTTPRoutes removes duplicate HTTPRoutes based on UID.
+func deduplicateHTTPRoutes(routes []gatewayv1.HTTPRoute) []gatewayv1.HTTPRoute {
+	seen := make(map[types.UID]struct{}, len(routes))
+	result := make([]gatewayv1.HTTPRoute, 0, len(routes))
+	for _, r := range routes {
+		if _, ok := seen[r.UID]; !ok {
+			seen[r.UID] = struct{}{}
+			result = append(result, r)
+		}
+	}
+	return result
+}
+
+// deduplicateGRPCRoutes removes duplicate GRPCRoutes based on UID.
+func deduplicateGRPCRoutes(routes []gatewayv1.GRPCRoute) []gatewayv1.GRPCRoute {
+	seen := make(map[types.UID]struct{}, len(routes))
+	result := make([]gatewayv1.GRPCRoute, 0, len(routes))
+	for _, r := range routes {
+		if _, ok := seen[r.UID]; !ok {
+			seen[r.UID] = struct{}{}
+			result = append(result, r)
+		}
+	}
+	return result
+}
+
+// deduplicateTLSRoutes removes duplicate TLSRoutes based on UID.
+func deduplicateTLSRoutes(routes []gatewayv1.TLSRoute) []gatewayv1.TLSRoute {
+	seen := make(map[types.UID]struct{}, len(routes))
+	result := make([]gatewayv1.TLSRoute, 0, len(routes))
+	for _, r := range routes {
+		if _, ok := seen[r.UID]; !ok {
+			seen[r.UID] = struct{}{}
+			result = append(result, r)
+		}
+	}
+	return result
 }
 
 func (r *gatewayReconciler) parentIsMatchingGateway(parent gatewayv1.ParentReference, namespace string) bool {

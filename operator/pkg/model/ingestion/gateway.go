@@ -82,6 +82,58 @@ func parentRefMatchesSource(parent gatewayv1.ParentReference, source model.Fully
 	return parentNS == source.Namespace
 }
 
+// routeAllowed checks whether a route is allowed to attach to this listener
+// based on its parentRef matching the listener's source and namespace policy.
+func (l *ListenerWithContext) routeAllowed(parentRefs []gatewayv1.ParentReference, routeNamespace string) bool {
+	if l.AllowedNamespaces != nil {
+		if _, ok := l.AllowedNamespaces[routeNamespace]; !ok {
+			return false
+		}
+	}
+	for _, parent := range parentRefs {
+		if parentRefMatchesSource(parent, l.Source, routeNamespace) {
+			return true
+		}
+	}
+	return false
+}
+
+// FilterHTTPRoutes returns only the HTTPRoutes that target this listener's
+// source and are in an allowed namespace.
+func (l *ListenerWithContext) FilterHTTPRoutes(routes []gatewayv1.HTTPRoute) []gatewayv1.HTTPRoute {
+	var filtered []gatewayv1.HTTPRoute
+	for _, r := range routes {
+		if l.routeAllowed(r.Spec.ParentRefs, r.GetNamespace()) {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered
+}
+
+// FilterGRPCRoutes returns only the GRPCRoutes that target this listener's
+// source and are in an allowed namespace.
+func (l *ListenerWithContext) FilterGRPCRoutes(routes []gatewayv1.GRPCRoute) []gatewayv1.GRPCRoute {
+	var filtered []gatewayv1.GRPCRoute
+	for _, r := range routes {
+		if l.routeAllowed(r.Spec.ParentRefs, r.GetNamespace()) {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered
+}
+
+// FilterTLSRoutes returns only the TLSRoutes that target this listener's
+// source and are in an allowed namespace.
+func (l *ListenerWithContext) FilterTLSRoutes(routes []gatewayv1.TLSRoute) []gatewayv1.TLSRoute {
+	var filtered []gatewayv1.TLSRoute
+	for _, r := range routes {
+		if l.routeAllowed(r.Spec.ParentRefs, r.GetNamespace()) {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered
+}
+
 // GatewayAPI translates Gateway API resources into a model.
 func GatewayAPI(log *slog.Logger, input Input) ([]model.HTTPListener, []model.TLSPassthroughListener) {
 	var resHTTP []model.HTTPListener
@@ -153,9 +205,12 @@ func GatewayAPI(log *slog.Logger, input Input) ([]model.HTTPListener, []model.TL
 			continue
 		}
 
+		filteredHTTPRoutes := l.FilterHTTPRoutes(input.HTTPRoutes)
+		filteredGRPCRoutes := l.FilterGRPCRoutes(input.GRPCRoutes)
+
 		var httpRoutes []model.HTTPRoute
-		httpRoutes = append(httpRoutes, toHTTPRoutes(log, l.Listener, l.Source, listenerHostnamesByProtocol, input.HTTPRoutes, input.Services, input.ServiceImports, input.ReferenceGrants, input.BackendTLSPolicyMap)...)
-		httpRoutes = append(httpRoutes, toGRPCRoutes(l.Listener, l.Source, listenerHostnamesByProtocol, input.GRPCRoutes, input.Services, input.ServiceImports, input.ReferenceGrants)...)
+		httpRoutes = append(httpRoutes, toHTTPRoutes(log, l.Listener, listenerHostnamesByProtocol, filteredHTTPRoutes, input.Services, input.ServiceImports, input.ReferenceGrants, input.BackendTLSPolicyMap)...)
+		httpRoutes = append(httpRoutes, toGRPCRoutes(l.Listener, listenerHostnamesByProtocol, filteredGRPCRoutes, input.Services, input.ServiceImports, input.ReferenceGrants)...)
 		resHTTP = append(resHTTP, model.HTTPListener{
 			Name:           string(l.Name),
 			Sources:        []model.FullyQualifiedResource{l.Source},
@@ -173,7 +228,7 @@ func GatewayAPI(log *slog.Logger, input Input) ([]model.HTTPListener, []model.TL
 				Sources:        []model.FullyQualifiedResource{l.Source},
 				Port:           uint32(l.Port),
 				Hostname:       toHostname(l.Hostname),
-				Routes:         toTLSRoutes(l.Listener, l.Source, listenerHostnamesByProtocol, input.TLSRoutes, input.Services, input.ServiceImports, input.ReferenceGrants),
+				Routes:         toTLSRoutes(l.Listener, listenerHostnamesByProtocol, l.FilterTLSRoutes(input.TLSRoutes), input.Services, input.ServiceImports, input.ReferenceGrants),
 				Infrastructure: infra,
 				Service:        toServiceModel(input.GatewayClassConfig),
 			})
@@ -214,8 +269,6 @@ func getBackendServiceName(namespace string, services []corev1.Service, serviceI
 
 func toHTTPRoutes(log *slog.Logger,
 	listener gatewayv1.Listener,
-	listenerSource model.FullyQualifiedResource,
-	allowedNamespaces map[string]struct{},
 	listenerHostnamesByProtocol map[gatewayv1.ProtocolType][]string,
 	input []gatewayv1.HTTPRoute,
 	services []corev1.Service,
@@ -229,13 +282,6 @@ func toHTTPRoutes(log *slog.Logger,
 		// Check parents to see if r can attach to them.
 		// We have to consider _both_ SectionName and Port
 		for _, parent := range r.Spec.ParentRefs {
-			// Check that the parentRef matches the listener's source.
-			// A ListenerSet parentRef only matches listeners from that ListenerSet,
-			// and a Gateway parentRef only matches Gateway listeners.
-			if !parentRefMatchesSource(parent, listenerSource, r.GetNamespace()) {
-				continue
-			}
-
 			// First, if both SectionName and Port are unset, attach
 			if parent.SectionName == nil && parent.Port == nil {
 				listenerIsParent = true
@@ -274,13 +320,6 @@ func toHTTPRoutes(log *slog.Logger,
 
 		if !listenerIsParent {
 			continue
-		}
-
-		// Check namespace restrictions for this listener
-		if allowedNamespaces != nil {
-			if _, ok := allowedNamespaces[r.GetNamespace()]; !ok {
-				continue
-			}
 		}
 
 		allProtocolHostnames := listenerHostnamesByProtocol[listener.Protocol]
@@ -587,8 +626,6 @@ func toHTTPRetry(retry *gatewayv1.HTTPRouteRetry) *model.HTTPRetry {
 }
 
 func toGRPCRoutes(listener gatewayv1beta1.Listener,
-	listenerSource model.FullyQualifiedResource,
-	allowedNamespaces map[string]struct{},
 	listenerHostnamesByProtocol map[gatewayv1.ProtocolType][]string,
 	input []gatewayv1.GRPCRoute,
 	services []corev1.Service,
@@ -599,9 +636,6 @@ func toGRPCRoutes(listener gatewayv1beta1.Listener,
 	for _, r := range input {
 		isListener := false
 		for _, parent := range r.Spec.ParentRefs {
-			if !parentRefMatchesSource(parent, listenerSource, r.GetNamespace()) {
-				continue
-			}
 			if parent.SectionName == nil || *parent.SectionName == listener.Name {
 				isListener = true
 				break
@@ -609,12 +643,6 @@ func toGRPCRoutes(listener gatewayv1beta1.Listener,
 		}
 		if !isListener {
 			continue
-		}
-
-		if allowedNamespaces != nil {
-			if _, ok := allowedNamespaces[r.GetNamespace()]; !ok {
-				continue
-			}
 		}
 
 		allProtocolHostnames := listenerHostnamesByProtocol[listener.Protocol]
@@ -725,14 +753,11 @@ func extractGRPCRoutes(hostnames []string, grpcr gatewayv1.GRPCRoute, services [
 	return grpcRoutes
 }
 
-func toTLSRoutes(listener gatewayv1beta1.Listener, listenerSource model.FullyQualifiedResource, allowedNamespaces map[string]struct{}, listenerHostnamesByProtocol map[gatewayv1.ProtocolType][]string, input []gatewayv1.TLSRoute, services []corev1.Service, serviceImports []mcsapiv1beta1.ServiceImport, grants []gatewayv1.ReferenceGrant) []model.TLSPassthroughRoute {
+func toTLSRoutes(listener gatewayv1beta1.Listener, listenerHostnamesByProtocol map[gatewayv1.ProtocolType][]string, input []gatewayv1.TLSRoute, services []corev1.Service, serviceImports []mcsapiv1beta1.ServiceImport, grants []gatewayv1.ReferenceGrant) []model.TLSPassthroughRoute {
 	var tlsRoutes []model.TLSPassthroughRoute
 	for _, r := range input {
 		isListener := false
 		for _, parent := range r.Spec.ParentRefs {
-			if !parentRefMatchesSource(parent, listenerSource, r.GetNamespace()) {
-				continue
-			}
 			if parent.SectionName == nil || *parent.SectionName == listener.Name {
 				isListener = true
 				break
@@ -740,12 +765,6 @@ func toTLSRoutes(listener gatewayv1beta1.Listener, listenerSource model.FullyQua
 		}
 		if !isListener {
 			continue
-		}
-
-		if allowedNamespaces != nil {
-			if _, ok := allowedNamespaces[r.GetNamespace()]; !ok {
-				continue
-			}
 		}
 
 		allProtocolHostnames := listenerHostnamesByProtocol[listener.Protocol]
