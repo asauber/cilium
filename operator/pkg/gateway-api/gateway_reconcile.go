@@ -188,6 +188,9 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return controllerruntime.Fail(err)
 	}
 
+	// Build merged listener list from Gateway + attached ListenerSets.
+	mergedListeners := r.buildMergedListeners(ctx, scopedLog, gw)
+
 	httpListeners, tlsPassthroughListeners := ingestion.GatewayAPI(scopedLog, ingestion.Input{
 		GatewayClass:        *gwc,
 		GatewayClassConfig:  r.getGatewayClassConfig(ctx, gwc),
@@ -199,6 +202,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		ServiceImports:      serviceImportsList.Items,
 		ReferenceGrants:     grants.Items,
 		BackendTLSPolicyMap: btlspMap,
+		MergedListeners:     mergedListeners,
 	})
 
 	validListener, err := r.setListenerStatus(ctx, gw, httpRouteList, tlsRouteList, grpcRouteList)
@@ -366,6 +370,69 @@ func (r *gatewayReconciler) updateStatus(ctx context.Context, original *gatewayv
 		return nil
 	}
 	return r.Client.Status().Update(ctx, new)
+}
+
+// buildMergedListeners builds the merged listener list from the Gateway's own
+// listeners and any attached ListenerSets. It also sets AttachedListenerSets
+// on the Gateway status.
+func (r *gatewayReconciler) buildMergedListeners(ctx context.Context, scopedLog *slog.Logger, gw *gatewayv1.Gateway) []ingestion.ListenerWithContext {
+	gwSource := model.FullyQualifiedResource{
+		Name:      gw.GetName(),
+		Namespace: gw.GetNamespace(),
+		Group:     gatewayv1.SchemeGroupVersion.Group,
+		Version:   gatewayv1.SchemeGroupVersion.Version,
+		Kind:      "Gateway",
+		UID:       string(gw.GetUID()),
+	}
+
+	var merged []ingestion.ListenerWithContext
+	for _, l := range gw.Spec.Listeners {
+		merged = append(merged, ingestion.ListenerWithContext{
+			Listener: l,
+			Source:   gwSource,
+		})
+	}
+
+	if !helpers.HasListenerSetSupport(r.Client.Scheme()) {
+		return merged
+	}
+
+	lsList := &gatewayv1.ListenerSetList{}
+	if err := r.Client.List(ctx, lsList, &client.ListOptions{
+		FieldSelector: fields.OneTermEqualSelector(indexers.ListenerSetGatewayIndex, client.ObjectKeyFromObject(gw).String()),
+	}); err != nil {
+		scopedLog.ErrorContext(ctx, "Unable to list ListenerSets", logfields.Error, err)
+		return merged
+	}
+
+	sortListenerSets(lsList.Items)
+
+	var attachedCount int32
+	for i := range lsList.Items {
+		ls := &lsList.Items[i]
+		if !isListenerSetAllowed(ctx, r.Client, gw, ls, scopedLog) {
+			continue
+		}
+		attachedCount++
+
+		lsSource := model.FullyQualifiedResource{
+			Name:      ls.GetName(),
+			Namespace: ls.GetNamespace(),
+			Group:     gatewayv1.SchemeGroupVersion.Group,
+			Version:   gatewayv1.SchemeGroupVersion.Version,
+			Kind:      "ListenerSet",
+			UID:       string(ls.GetUID()),
+		}
+		for _, entry := range ls.Spec.Listeners {
+			merged = append(merged, ingestion.ListenerWithContext{
+				Listener: helpers.ListenerEntryToListener(entry),
+				Source:   lsSource,
+			})
+		}
+	}
+
+	gw.Status.AttachedListenerSets = &attachedCount
+	return merged
 }
 
 func (r *gatewayReconciler) filterHTTPRoutesByGateway(ctx context.Context, gw *gatewayv1.Gateway, routes []gatewayv1.HTTPRoute) []gatewayv1.HTTPRoute {
