@@ -12,12 +12,13 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-// HasListenerSetSupport returns if the ListenerSet CRD is supported.
-// This checks if the Gateway API v1 ListenerSet CRD is registered in the client scheme
-// and it is expected that it is registered only if the ListenerSet
-// CRD has been installed prior to the client setup.
+// HasListenerSetSupport returns if the ListenerSet CRD is supported.  This
+// checks if the Gateway API v1 ListenerSet CRD is registered in the client
+// scheme and it is expected that it is registered only if the ListenerSet CRD
+// has been installed prior to the client setup.
 func HasListenerSetSupport(scheme *runtime.Scheme) bool {
-	return scheme.Recognizes(gatewayv1.SchemeGroupVersion.WithKind("ListenerSet"))
+	return scheme.Recognizes(
+		gatewayv1.SchemeGroupVersion.WithKind("ListenerSet"))
 }
 
 // ListenerEntryToListener converts a ListenerEntry to a Listener.
@@ -33,9 +34,15 @@ func ListenerEntryToListener(entry gatewayv1.ListenerEntry) gatewayv1.Listener {
 	}
 }
 
-// ResolveListenerSetToGateway looks up a ListenerSet by name/namespace and returns
-// the NamespacedName of its parent Gateway, or nil if the ListenerSet cannot be found.
-func ResolveListenerSetToGateway(ctx context.Context, c client.Client, lsName string, lsNamespace string) *types.NamespacedName {
+// ResolveListenerSetToGateway looks up a ListenerSet by name/namespace and
+// returns the NamespacedName of its parent Gateway, or nil if the ListenerSet
+// cannot be found.
+func ResolveListenerSetToGateway(
+	ctx context.Context,
+	c client.Client,
+	lsName string,
+	lsNamespace string,
+) *types.NamespacedName {
 	ls := &gatewayv1.ListenerSet{}
 	if err := c.Get(ctx, types.NamespacedName{
 		Namespace: lsNamespace,
