@@ -20,7 +20,8 @@ import (
 	"github.com/cilium/cilium/pkg/logging/logfields"
 )
 
-// updateReconcileRequestsForParentRefs mutates the passed reconcile.Request set to add all
+// updateReconcileRequestsForParentRefs mutates the passed reconcile.Request set
+// to add all referenced Gateways, both via Gateway and via ListenerSet
 func updateReconcileRequestsForParentRefs(ctx context.Context, c client.Client, parentRefs []gatewayv1.ParentReference, ns string, allGatewaysSet map[string]struct{}, rrSet map[reconcile.Request]struct{}) {
 	for _, parent := range parentRefs {
 		if helpers.IsGateway(parent) {

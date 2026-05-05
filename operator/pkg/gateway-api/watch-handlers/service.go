@@ -19,7 +19,6 @@ import (
 	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 	mcsapiv1beta1 "sigs.k8s.io/mcs-api/pkg/apis/v1beta1"
 
-	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
 	"github.com/cilium/cilium/operator/pkg/gateway-api/indexers"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 )
@@ -151,20 +150,9 @@ func EnqueueRequestForBackendServiceImport(c client.Client, logger slog.Logger) 
 			allCiliumGatewaysSet[gwFullName.String()] = struct{}{}
 		}
 
-		// iterate through the HTTPRoutes, return a reconcile.Request for each Gateways that is relevant.
+		// iterate through the HTTPRoutes, return a reconcile.Request for each Gateway that is relevant.
 		for _, hr := range hrList.Items {
-			for _, parent := range hr.Spec.ParentRefs {
-				if !helpers.IsGateway(parent) {
-					continue
-				}
-				parentFullName := types.NamespacedName{
-					Name:      string(parent.Name),
-					Namespace: helpers.NamespaceDerefOr(parent.Namespace, hr.Namespace),
-				}
-				if _, found := allCiliumGatewaysSet[parentFullName.String()]; found {
-					reconcileRequests[reconcile.Request{NamespacedName: parentFullName}] = struct{}{}
-				}
-			}
+			updateReconcileRequestsForParentRefs(ctx, c, hr.Spec.ParentRefs, hr.Namespace, allCiliumGatewaysSet, reconcileRequests)
 		}
 
 		// return the keys of the set.
