@@ -29,7 +29,6 @@ var exemptFeatures = []features.Feature{
 	features.MeshConsumerRouteFeature,
 	features.BackendTLSPolicySanValidationFeature,
 	features.TLSRouteModeTerminateFeature,
-	features.ListenerSetFeature,
 	features.GatewayBackendClientCertificateFeature,
 	features.GatewayFrontendClientCertificateValidationFeature,
 	features.HTTPRoute303RedirectStatusCodeFeature,
