@@ -51,6 +51,14 @@ func TestHTTPGatewayAPI(t *testing.T) {
 		"Conformance/HTTPRouteBackendTLSPolicySystemCA":           {},
 		"Conformance/HTTPRouteBackendTLSPolicyConflictResolution": {},
 		"Conformance/HTTPRouteBackendTLSPolicyInvalidCA":          {},
+		"ListenerSet/basic-http-routing":                          {},
+		"ListenerSet/route-isolation-gateway-parentref":           {},
+		"ListenerSet/route-isolation-both-parentrefs":             {},
+		"ListenerSet/allowed-routes-same-namespace":               {},
+		"ListenerSet/allowed-routes-namespace-selector":           {},
+		"ListenerSet/reference-grant-missing":                     {},
+		"ListenerSet/reference-grant-gateway-only":                {},
+		"ListenerSet/reference-grant-valid":                       {},
 	}
 
 	for name := range tests {
@@ -214,6 +222,13 @@ func readGatewayInput(t *testing.T, testName string) Input {
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-grpcroute.yaml"), &input.GRPCRoutes)
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-service.yaml"), &input.Services)
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-serviceimport.yaml"), &input.ServiceImports)
+	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-referencegrant.yaml"), &input.ReferenceGrants)
+
+	var mergedFixtures []MergedListenerFixture
+	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-mergedlisteners.yaml"), &mergedFixtures)
+	if len(mergedFixtures) > 0 {
+		input.MergedListeners = toMergedListeners(mergedFixtures)
+	}
 
 	btlspMapFixture := &BackendTLSPolicyMapFixture{}
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-backendtlspolicy.yaml"), btlspMapFixture)
