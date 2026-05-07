@@ -58,6 +58,7 @@ spec:
             name: tls-validity-checks-certificate
             namespace: gateway-conformance-infra
 status:
+  attachedListenerSets: 0
   conditions:
     - lastTransitionTime: "2025-07-01T14:29:32Z"
       message: Gateway successfully scheduled

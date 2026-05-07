@@ -33,6 +33,7 @@ spec:
           - name: tls-checks-certificate
         mode: Terminate
 status:
+  attachedListenerSets: 0
   conditions:
     - lastTransitionTime: "2025-07-01T05:06:15Z"
       message: Gateway successfully scheduled
