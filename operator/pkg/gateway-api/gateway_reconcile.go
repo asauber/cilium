@@ -926,6 +926,12 @@ func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1
 	return oneValidListener, nil
 }
 
+// listenerSlotKey identifies a unique listener slot by hostname and port.
+type listenerSlotKey struct {
+	hostname string
+	port     gatewayv1.PortNumber
+}
+
 // listenerSlot represents a claimed listener hostname+port combination.
 type listenerSlot struct {
 	protocol gatewayv1.ProtocolType
@@ -944,14 +950,13 @@ func (r *gatewayReconciler) setListenerSetStatuses(ctx context.Context, gw *gate
 	}
 
 	// Build claimed slots from Gateway listeners (Gateway always wins).
-	// Key: "hostname:port" (empty hostname uses "*")
-	claimedSlots := map[string]listenerSlot{}
+	claimedSlots := map[listenerSlotKey]listenerSlot{}
 	for _, l := range gw.Spec.Listeners {
 		hostname := "*"
 		if l.Hostname != nil {
 			hostname = string(*l.Hostname)
 		}
-		key := fmt.Sprintf("%s:%d", hostname, l.Port)
+		key := listenerSlotKey{hostname: hostname, port: l.Port}
 		claimedSlots[key] = listenerSlot{protocol: l.Protocol}
 	}
 
@@ -977,7 +982,7 @@ func (r *gatewayReconciler) setListenerSetStatuses(ctx context.Context, gw *gate
 			if l.Hostname != nil {
 				hostname = string(*l.Hostname)
 			}
-			slotKey := fmt.Sprintf("%s:%d", hostname, l.Port)
+			slotKey := listenerSlotKey{hostname: hostname, port: l.Port}
 
 			if existing, claimed := claimedSlots[slotKey]; claimed {
 				// Same hostname+port already claimed
@@ -994,10 +999,7 @@ func (r *gatewayReconciler) setListenerSetStatuses(ctx context.Context, gw *gate
 				// Also check for protocol conflicts: same port, different protocol, any hostname
 				// A TCP listener (no hostname) on port 80 conflicts with HTTP listeners on port 80
 				for existingKey, existing := range claimedSlots {
-					// Parse port from existing key
-					var existingPort gatewayv1.PortNumber
-					fmt.Sscanf(existingKey[strings.LastIndex(existingKey, ":")+1:], "%d", &existingPort)
-					if existingPort == l.Port && existing.protocol != l.Protocol {
+					if existingKey.port == l.Port && existing.protocol != l.Protocol {
 						isConflicted = true
 						conflictReason = gatewayv1.ListenerReasonProtocolConflict
 						break
