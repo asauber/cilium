@@ -30,6 +30,7 @@ var exemptFeatures = []features.Feature{
 	features.BackendTLSPolicySanValidationFeature,
 	features.HTTPRouteCORS,
 	features.TLSRouteModeTerminateFeature,
+	features.GatewayBackendClientCertificateFeature,
 	features.GatewayFrontendClientCertificateValidationFeature,
 	features.HTTPRoute303RedirectStatusCodeFeature,
 	features.HTTPRoute307RedirectStatusCodeFeature,
