@@ -1,0 +1,15 @@
+- metadata:
+    creationTimestamp: null
+    name: http-route
+    namespace: default
+  spec:
+    parentRefs:
+    - name: listenerset-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io
+    rules:
+    - backendRefs:
+      - name: backend-service
+        port: 8080
+  status:
+    parents: null
