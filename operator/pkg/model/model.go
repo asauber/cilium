@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/runtime/schema"
+
 	"github.com/cilium/cilium/pkg/slices"
 )
 
@@ -200,6 +202,11 @@ type FullyQualifiedResource struct {
 	Version   string `json:"version,omitempty"`
 	Kind      string `json:"kind,omitempty"`
 	UID       string `json:"uid,omitempty"`
+}
+
+// GVK returns the GroupVersionKind for this resource.
+func (r FullyQualifiedResource) GVK() schema.GroupVersionKind {
+	return schema.GroupVersionKind{Group: r.Group, Version: r.Version, Kind: r.Kind}
 }
 
 // TLSSecret holds a reference to a secret containing a TLS keypair.
