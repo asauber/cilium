@@ -1,0 +1,22 @@
+- listener:
+    name: gw-http
+    port: 80
+    protocol: HTTP
+  source:
+    name: my-gateway
+    namespace: default
+    group: gateway.networking.k8s.io
+    version: v1
+    kind: Gateway
+    uid: gw-uid
+- listener:
+    name: ls-http
+    port: 8080
+    protocol: HTTP
+  source:
+    name: my-listenerset
+    namespace: default
+    group: gateway.networking.k8s.io
+    version: v1
+    kind: ListenerSet
+    uid: ls-uid

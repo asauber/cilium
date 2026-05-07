@@ -1,0 +1,28 @@
+- hostname: "*"
+  name: gw-http
+  port: 80
+  routes:
+  - backends:
+    - name: my-service
+      namespace: default
+      port:
+        port: 8080
+    path_match: {}
+    timeout: {}
+  sources:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: my-gateway
+    namespace: default
+    version: v1
+    uid: gw-uid
+- hostname: "*"
+  name: ls-http
+  port: 8080
+  sources:
+  - group: gateway.networking.k8s.io
+    kind: ListenerSet
+    name: my-listenerset
+    namespace: default
+    version: v1
+    uid: ls-uid

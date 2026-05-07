@@ -1,0 +1,14 @@
+metadata:
+  creationTimestamp: null
+  name: my-gateway
+  namespace: infra
+spec:
+  gatewayClassName: cilium
+  listeners:
+  - name: gw-http
+    port: 80
+    protocol: HTTP
+    allowedRoutes:
+      namespaces:
+        from: Same
+status: {}

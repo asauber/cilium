@@ -1,0 +1,32 @@
+- metadata:
+    creationTimestamp: null
+    name: route-same-ns
+    namespace: app-ns
+  spec:
+    parentRefs:
+    - name: my-listenerset
+      namespace: app-ns
+      kind: ListenerSet
+      group: gateway.networking.k8s.io
+    rules:
+    - backendRefs:
+      - name: my-service
+        port: 8080
+  status:
+    parents: null
+- metadata:
+    creationTimestamp: null
+    name: route-other-ns
+    namespace: other-ns
+  spec:
+    parentRefs:
+    - name: my-listenerset
+      namespace: app-ns
+      kind: ListenerSet
+      group: gateway.networking.k8s.io
+    rules:
+    - backendRefs:
+      - name: other-service
+        port: 8080
+  status:
+    parents: null
