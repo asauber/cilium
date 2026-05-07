@@ -62,6 +62,7 @@ status:
   addresses:
     - type: IPAddress
       value: 172.18.255.197
+  attachedListenerSets: 0
   conditions:
     - lastTransitionTime: "2025-08-18T04:34:43Z"
       message: Gateway successfully scheduled

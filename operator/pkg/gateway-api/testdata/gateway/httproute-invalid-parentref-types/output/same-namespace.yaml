@@ -15,6 +15,7 @@ spec:
       port: 80
       protocol: HTTP
 status:
+  attachedListenerSets: 0
   conditions:
     - lastTransitionTime: "2025-07-01T14:29:32Z"
       message: Gateway successfully scheduled

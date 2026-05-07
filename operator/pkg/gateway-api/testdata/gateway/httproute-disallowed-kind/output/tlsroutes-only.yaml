@@ -19,6 +19,7 @@ spec:
       tls:
         mode: Passthrough
 status:
+  attachedListenerSets: 0
   conditions:
     - lastTransitionTime: "2025-07-01T14:19:43Z"
       message: Gateway successfully scheduled

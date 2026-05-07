@@ -17,6 +17,7 @@ spec:
       port: 80
       protocol: HTTP
 status:
+  attachedListenerSets: 0
   conditions:
     - lastTransitionTime: "2025-07-01T05:23:50Z"
       message: No Accepted Listeners

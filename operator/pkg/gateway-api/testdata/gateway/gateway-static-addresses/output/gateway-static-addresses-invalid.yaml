@@ -17,6 +17,7 @@ spec:
       port: 8080
       protocol: HTTP
 status:
+  attachedListenerSets: 0
   conditions:
     - lastTransitionTime: "2025-07-01T06:15:08Z"
       message: Unsupported Gateway address, address type is not supported

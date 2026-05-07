@@ -18,6 +18,7 @@ spec:
       tls:
         mode: Passthrough
 status:
+  attachedListenerSets: 0
   conditions:
     - type: "Accepted"
       status: "True"
