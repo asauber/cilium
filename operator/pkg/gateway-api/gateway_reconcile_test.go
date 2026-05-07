@@ -65,6 +65,10 @@ var (
 		Kind:       "UDPRoute",
 		APIVersion: gatewayv1alpha2APIVersion,
 	}
+	listenerSetTypeMeta = metav1.TypeMeta{
+		Kind:       "ListenerSet",
+		APIVersion: gatewayv1APIVersion,
+	}
 	endpointSliceTypeMeta = metav1.TypeMeta{
 		Kind:       "EndpointSlice",
 		APIVersion: discoveryv1.SchemeGroupVersion.String(),
@@ -115,6 +119,7 @@ func Test_Conformance(t *testing.T) {
 		disableServiceImport bool
 		disableTCPRoute      bool
 		disableUDPRoute      bool
+		skipCEC              bool
 		wantErr              bool
 	}{
 		{
@@ -332,6 +337,34 @@ func Test_Conformance(t *testing.T) {
 		{name: "gateway-cross-protocol-same-hostname", gateway: []gwDetails{{FullName: types.NamespacedName{Name: "cross-protocol-same-hostname", Namespace: "gateway-conformance-infra"}}}},
 		{name: "gateway-cross-protocol-same-port-same-hostname", gateway: []gwDetails{{FullName: types.NamespacedName{Name: "cross-protocol-same-port-same-hostname", Namespace: "gateway-conformance-infra"}, wantErr: true}}},
 		{name: "gateway-ns-restricted-same-hostname", gateway: []gwDetails{{FullName: types.NamespacedName{Name: "ns-restricted-same-hostname", Namespace: "gateway-conformance-infra"}}}},
+		// ListenerSet tests
+		{name: "listenerset-default-not-allowed", gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "default-not-allowed", Namespace: "gateway-conformance-infra"}},
+		}},
+		{name: "listenerset-allowed-namespace-none", gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "allowed-namespace-none", Namespace: "gateway-conformance-infra"}},
+		}},
+		{name: "listenerset-allowed-namespace-same", skipCEC: true, gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "allowed-namespace-same", Namespace: "gateway-conformance-infra"}},
+		}},
+		{name: "listenerset-allowed-namespace-selector", skipCEC: true, gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "allowed-namespace-selector", Namespace: "gateway-conformance-infra"}},
+		}},
+		{name: "listenerset-protocol-conflict", skipCEC: true, gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "protocol-conflict", Namespace: "gateway-conformance-infra"}},
+		}},
+		{name: "listenerset-hostname-conflict", skipCEC: true, gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "hostname-conflict", Namespace: "gateway-conformance-infra"}},
+		}},
+		{name: "listenerset-cross-listenerset-hostname-conflict", skipCEC: true, gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "cross-listenerset-hostname-conflict", Namespace: "gateway-conformance-infra"}},
+		}},
+		{name: "listenerset-cross-listenerset-protocol-conflict", skipCEC: true, gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "cross-listenerset-protocol-conflict", Namespace: "gateway-conformance-infra"}},
+		}},
+		{name: "listenerset-allowed-routes-kinds", skipCEC: true, gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "allowed-route-kinds", Namespace: "gateway-conformance-infra"}},
+		}},
 	}
 
 	for _, tt := range tests {
@@ -348,7 +381,8 @@ func Test_Conformance(t *testing.T) {
 				WithStatusSubresource(&gatewayv1.TLSRoute{}).
 				WithStatusSubresource(&gatewayv1.Gateway{}).
 				WithStatusSubresource(&gatewayv1.GatewayClass{}).
-				WithStatusSubresource(&gatewayv1.BackendTLSPolicy{})
+				WithStatusSubresource(&gatewayv1.BackendTLSPolicy{}).
+				WithStatusSubresource(&gatewayv1.ListenerSet{})
 
 			disabledKinds := map[string]bool{
 				helpers.ServiceImportKind: tt.disableServiceImport,
@@ -379,6 +413,10 @@ func Test_Conformance(t *testing.T) {
 				clientBuilder.WithStatusSubresource(&gatewayv1alpha2.UDPRoute{})
 				clientBuilder.WithIndex(&gatewayv1alpha2.UDPRoute{}, indexers.GatewayUDPRouteIndex, indexers.IndexUDPRouteByGateway)
 			}
+			clientBuilder.WithIndex(&gatewayv1.ListenerSet{}, indexers.ListenerSetGatewayIndex, indexers.IndexListenerSetByGateway)
+			clientBuilder.WithIndex(&gatewayv1.HTTPRoute{}, indexers.HTTPRouteListenerSetIndex, indexers.IndexHTTPRouteByListenerSet)
+			clientBuilder.WithIndex(&gatewayv1.GRPCRoute{}, indexers.GRPCRouteListenerSetIndex, indexers.IndexGRPCRouteByListenerSet)
+			clientBuilder.WithIndex(&gatewayv1.TLSRoute{}, indexers.TLSRouteListenerSetIndex, indexers.IndexTLSRouteByListenerSet)
 
 			c := clientBuilder.Build()
 
@@ -438,7 +476,7 @@ func Test_Conformance(t *testing.T) {
 				expectedGateway := &gatewayv1.Gateway{}
 				readOutput(t, fmt.Sprintf("testdata/gateway/%s/output/%s.yaml", tt.name, gwDetail.FullName.Name), expectedGateway)
 				require.Empty(t, cmp.Diff(expectedGateway, actualGateway, cmpIgnoreFields...))
-				if !gwDetail.wantErr && !gwDetail.skipCEC {
+				if !gwDetail.wantErr && !gwDetail.skipCEC && !tt.skipCEC {
 					// Checking the output for CiliumEnvoyConfig
 					actualCEC := &ciliumv2.CiliumEnvoyConfig{}
 					err = c.Get(t.Context(), client.ObjectKey{
@@ -531,6 +569,19 @@ func Test_Conformance(t *testing.T) {
 				expectedUDPR := &gatewayv1alpha2.UDPRoute{}
 				readOutput(t, fmt.Sprintf("testdata/gateway/%s/output/udproute-%s.yaml", tt.name, udpr.Name), expectedUDPR)
 				require.Empty(t, cmp.Diff(expectedUDPR, actualUDPR, cmpIgnoreFields...))
+			}
+
+			lsList := &gatewayv1.ListenerSetList{}
+			err = c.List(t.Context(), lsList)
+			require.NoError(t, err)
+			for _, ls := range lsList.Items {
+				actualLS := &gatewayv1.ListenerSet{}
+				err = c.Get(t.Context(), client.ObjectKeyFromObject(&ls), actualLS)
+				actualLS.TypeMeta = listenerSetTypeMeta
+				require.NoError(t, err, "error getting ListenerSet %s/%s: %v", ls.Namespace, ls.Name, err)
+				expectedLS := &gatewayv1.ListenerSet{}
+				readOutput(t, fmt.Sprintf("testdata/gateway/%s/output/listenerset-%s.yaml", tt.name, ls.Name), expectedLS)
+				require.Empty(t, cmp.Diff(expectedLS, actualLS, cmpIgnoreFields...))
 			}
 		})
 	}
