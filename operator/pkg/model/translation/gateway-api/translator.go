@@ -57,22 +57,30 @@ func (t *gatewayAPITranslator) Translate(m *model.Model) (*ciliumv2.CiliumEnvoyC
 	// is the HTTPRoute.
 	var owner *model.FullyQualifiedResource
 
-	var ports []uint32
 	for _, l := range listeners {
 		sources := l.GetSources()
-		source = &sources[0]
-		owner = source
+		// source/owner must come from a Gateway (or Service for GAMMA)
+		// listener, not a ListenerSet listener. When merged listeners are built
+		// for a Gateway, the first listener is always a required direct
+		// listener on the Gateway.
+		if source == nil && sources[0].Kind != "ListenerSet" {
+			source = &sources[0]
+			owner = source
+		}
 		// If there's more than one source in the listener, then this model is a GAMMA one,
 		// and includes a HTTPRoute source as the second one.
 		if len(sources) > 1 {
 			owner = &sources[1]
 		}
-
-		ports = append(ports, l.GetPort())
 	}
 
 	if source == nil || source.Name == "" {
 		return nil, nil, nil, fmt.Errorf("model source name can't be empty")
+	}
+
+	var ports []uint32
+	for _, l := range listeners {
+		ports = append(ports, l.GetPort())
 	}
 
 	// generatedName is the name of the generated objects.
