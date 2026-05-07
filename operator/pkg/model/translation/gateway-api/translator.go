@@ -60,8 +60,10 @@ func (t *gatewayAPITranslator) Translate(m *model.Model) (*ciliumv2.CiliumEnvoyC
 	var ports []uint32
 	for _, l := range listeners {
 		sources := l.GetSources()
-		source = &sources[0]
-		owner = source
+		if source == nil {
+			source = &sources[0]
+			owner = source
+		}
 		// If there's more than one source in the listener, then this model is a GAMMA one,
 		// and includes a HTTPRoute source as the second one.
 		if len(sources) > 1 {
