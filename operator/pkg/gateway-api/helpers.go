@@ -287,6 +287,18 @@ func isListenerSetAllowed(ctx context.Context, c client.Client, gw *gatewayv1.Ga
 	return false
 }
 
+// listenerSetFQR returns a FullyQualifiedResource identifying the given ListenerSet.
+func listenerSetFQR(ls *gatewayv1.ListenerSet) model.FullyQualifiedResource {
+	return model.FullyQualifiedResource{
+		Name:      ls.GetName(),
+		Namespace: ls.GetNamespace(),
+		Group:     gatewayv1.SchemeGroupVersion.Group,
+		Version:   gatewayv1.SchemeGroupVersion.Version,
+		Kind:      "ListenerSet",
+		UID:       string(ls.GetUID()),
+	}
+}
+
 // sortListenerSets sorts ListenerSets by precedence: oldest creation timestamp
 // first, then alphabetical by namespace/name.
 func sortListenerSets(sets []gatewayv1.ListenerSet) {

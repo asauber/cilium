@@ -481,14 +481,7 @@ func (r *gatewayReconciler) buildMergedListeners(ctx context.Context, scopedLog 
 		attachedCount++
 		attachedSets = append(attachedSets, *ls)
 
-		lsSource := model.FullyQualifiedResource{
-			Name:      ls.GetName(),
-			Namespace: ls.GetNamespace(),
-			Group:     gatewayv1.SchemeGroupVersion.Group,
-			Version:   gatewayv1.SchemeGroupVersion.Version,
-			Kind:      "ListenerSet",
-			UID:       string(ls.GetUID()),
-		}
+		lsSource := listenerSetFQR(ls)
 		for _, entry := range ls.Spec.Listeners {
 			listener := helpers.ListenerEntryToListener(entry)
 			merged = append(merged, ingestion.ListenerWithContext{
@@ -1193,18 +1186,11 @@ func (r *gatewayReconciler) setListenerSetStatuses(ctx context.Context, gw *gate
 			}
 
 			// Count attached routes for this listener
-			lsSource := &model.FullyQualifiedResource{
-				Name:      ls.GetName(),
-				Namespace: ls.GetNamespace(),
-				Group:     gatewayv1.SchemeGroupVersion.Group,
-				Version:   gatewayv1.SchemeGroupVersion.Version,
-				Kind:      "ListenerSet",
-				UID:       string(ls.GetUID()),
-			}
+			lsSource := listenerSetFQR(ls)
 			var attachedRoutes int32
-			attachedRoutes += int32(len(r.filterHTTPRoutesByListener(ctx, gw, &l, lsSource, httpRoutes.Items, *ls)))
-			attachedRoutes += int32(len(r.filterGRPCRoutesByListener(ctx, gw, &l, lsSource, grpcRoutes.Items, *ls)))
-			attachedRoutes += int32(len(r.filterTLSRoutesByListener(ctx, gw, &l, lsSource, tlsRoutes.Items, *ls)))
+			attachedRoutes += int32(len(r.filterHTTPRoutesByListener(ctx, gw, &l, &lsSource, httpRoutes.Items, *ls)))
+			attachedRoutes += int32(len(r.filterGRPCRoutesByListener(ctx, gw, &l, &lsSource, grpcRoutes.Items, *ls)))
+			attachedRoutes += int32(len(r.filterTLSRoutesByListener(ctx, gw, &l, &lsSource, tlsRoutes.Items, *ls)))
 
 			listenerStatuses = append(listenerStatuses, gatewayv1.ListenerEntryStatus{
 				Name:           entry.Name,
@@ -1377,19 +1363,9 @@ func (r *gatewayReconciler) runListenerSetRouteChecks(input routechecks.Input, p
 	}
 
 	// Find the parent Gateway from the ListenerSet's parentRef
-	if ls.Spec.ParentRef.Group == nil || *ls.Spec.ParentRef.Group != gatewayv1.GroupName {
-		return nil
-	}
-	if ls.Spec.ParentRef.Kind != nil && *ls.Spec.ParentRef.Kind != "Gateway" {
-		return nil
-	}
-
-	gwNs := helpers.NamespaceDerefOr(ls.Spec.ParentRef.Namespace, ls.GetNamespace())
+	gwNN := helpers.ListenerSetParentGateway(ls)
 	gw := &gatewayv1.Gateway{}
-	if err := r.Client.Get(context.Background(), types.NamespacedName{
-		Namespace: gwNs,
-		Name:      string(ls.Spec.ParentRef.Name),
-	}, gw); err != nil {
+	if err := r.Client.Get(context.Background(), *gwNN, gw); err != nil {
 		return nil // Gateway not found, skip
 	}
 
