@@ -37,16 +37,16 @@ func (g *GatewayListenerOwner) GetListeners() []gatewayv1.Listener {
 
 // ListenerSetListenerOwner holds converted listeners and namespace for a ListenerSet.
 type ListenerSetListenerOwner struct {
-	Listeners_ []gatewayv1.Listener
-	Namespace_ string
+	Listeners []gatewayv1.Listener
+	Namespace string
 }
 
 func (l *ListenerSetListenerOwner) GetListeners() []gatewayv1.Listener {
-	return l.Listeners_
+	return l.Listeners
 }
 
 func (l *ListenerSetListenerOwner) GetNamespace() string {
-	return l.Namespace_
+	return l.Namespace
 }
 
 type GenericRule interface {
