@@ -1,0 +1,32 @@
+- metadata:
+    creationTimestamp: null
+    name: route-selected-ns
+    namespace: selected-ns
+  spec:
+    parentRefs:
+    - name: additional-listeners
+      namespace: app-ns
+      kind: ListenerSet
+      group: gateway.networking.k8s.io
+    rules:
+    - backendRefs:
+      - name: selected-service
+        port: 8080
+  status:
+    parents: null
+- metadata:
+    creationTimestamp: null
+    name: route-rejected-ns
+    namespace: rejected-ns
+  spec:
+    parentRefs:
+    - name: additional-listeners
+      namespace: app-ns
+      kind: ListenerSet
+      group: gateway.networking.k8s.io
+    rules:
+    - backendRefs:
+      - name: rejected-service
+        port: 8080
+  status:
+    parents: null
