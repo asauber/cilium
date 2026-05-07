@@ -1,0 +1,52 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: ls-ls-proto-conflict
+  namespace: gateway-conformance-infra
+spec:
+  gatewayClassName: cilium
+  allowedListeners:
+    namespaces:
+      from: Same
+  listeners:
+    - name: http
+      port: 8888
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+# Alphabetically first ListenerSet — wins port 80
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: ls-ls-proto-a
+  namespace: gateway-conformance-infra
+spec:
+  parentRef:
+    name: ls-ls-proto-conflict
+    namespace: gateway-conformance-infra
+  listeners:
+    - name: http-on-80
+      port: 80
+      protocol: HTTP
+---
+# Alphabetically second ListenerSet — port 80 TLS conflicts with ls-ls-proto-a's HTTP
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: ls-ls-proto-b
+  namespace: gateway-conformance-infra
+spec:
+  parentRef:
+    name: ls-ls-proto-conflict
+    namespace: gateway-conformance-infra
+  listeners:
+    - name: tls-on-80
+      port: 80
+      protocol: TLS
+      tls:
+        mode: Passthrough
+    - name: http-on-8080
+      port: 8080
+      protocol: HTTP

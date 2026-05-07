@@ -122,6 +122,10 @@ func readInput(t *testing.T, file string) []client.Object {
 			obj := &gatewayv1.BackendTLSPolicy{}
 			fromYaml(t, o, obj)
 			res = append(res, obj)
+		case "ListenerSet":
+			obj := &gatewayv1.ListenerSet{}
+			fromYaml(t, o, obj)
+			res = append(res, obj)
 		}
 	}
 
