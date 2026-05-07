@@ -1459,11 +1459,12 @@ func (l *listenerSetRouteInput) GetGateway(parent gatewayv1.ParentReference) (*g
 
 // deduplicateHTTPRoutes removes duplicate HTTPRoutes based on UID.
 func deduplicateHTTPRoutes(routes []gatewayv1.HTTPRoute) []gatewayv1.HTTPRoute {
-	seen := make(map[types.UID]struct{}, len(routes))
+	seen := make(map[types.NamespacedName]struct{}, len(routes))
 	result := make([]gatewayv1.HTTPRoute, 0, len(routes))
 	for _, r := range routes {
-		if _, ok := seen[r.UID]; !ok {
-			seen[r.UID] = struct{}{}
+		key := types.NamespacedName{Namespace: r.Namespace, Name: r.Name}
+		if _, ok := seen[key]; !ok {
+			seen[key] = struct{}{}
 			result = append(result, r)
 		}
 	}
@@ -1472,11 +1473,12 @@ func deduplicateHTTPRoutes(routes []gatewayv1.HTTPRoute) []gatewayv1.HTTPRoute {
 
 // deduplicateGRPCRoutes removes duplicate GRPCRoutes based on UID.
 func deduplicateGRPCRoutes(routes []gatewayv1.GRPCRoute) []gatewayv1.GRPCRoute {
-	seen := make(map[types.UID]struct{}, len(routes))
+	seen := make(map[types.NamespacedName]struct{}, len(routes))
 	result := make([]gatewayv1.GRPCRoute, 0, len(routes))
 	for _, r := range routes {
-		if _, ok := seen[r.UID]; !ok {
-			seen[r.UID] = struct{}{}
+		key := types.NamespacedName{Namespace: r.Namespace, Name: r.Name}
+		if _, ok := seen[key]; !ok {
+			seen[key] = struct{}{}
 			result = append(result, r)
 		}
 	}
@@ -1485,11 +1487,12 @@ func deduplicateGRPCRoutes(routes []gatewayv1.GRPCRoute) []gatewayv1.GRPCRoute {
 
 // deduplicateTLSRoutes removes duplicate TLSRoutes based on UID.
 func deduplicateTLSRoutes(routes []gatewayv1.TLSRoute) []gatewayv1.TLSRoute {
-	seen := make(map[types.UID]struct{}, len(routes))
+	seen := make(map[types.NamespacedName]struct{}, len(routes))
 	result := make([]gatewayv1.TLSRoute, 0, len(routes))
 	for _, r := range routes {
-		if _, ok := seen[r.UID]; !ok {
-			seen[r.UID] = struct{}{}
+		key := types.NamespacedName{Namespace: r.Namespace, Name: r.Name}
+		if _, ok := seen[key]; !ok {
+			seen[key] = struct{}{}
 			result = append(result, r)
 		}
 	}

@@ -42,6 +42,7 @@ spec:
           from: Same
       hostname: bar.com
 status:
+  attachedListenerSets: 0
   conditions:
     - lastTransitionTime: "2025-08-18T04:34:43Z"
       message: Gateway successfully scheduled

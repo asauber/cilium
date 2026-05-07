@@ -20,6 +20,7 @@ spec:
             kind: Secret
             name: tls-validity-checks-certificate
 status:
+  attachedListenerSets: 0
   conditions:
     - lastTransitionTime: "2025-07-01T05:29:39Z"
       message: No Accepted Listeners
