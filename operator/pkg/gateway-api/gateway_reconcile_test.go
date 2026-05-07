@@ -311,6 +311,12 @@ func Test_Conformance(t *testing.T) {
 		{name: "listenerset-hostname-conflict", skipCEC: true, gateway: []gwDetails{
 			{FullName: types.NamespacedName{Name: "ls-hostname-conflict", Namespace: "gateway-conformance-infra"}},
 		}},
+		{name: "listenerset-ls-to-ls-hostname-conflict", skipCEC: true, gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "ls-ls-hostname-conflict", Namespace: "gateway-conformance-infra"}},
+		}},
+		{name: "listenerset-ls-to-ls-protocol-conflict", skipCEC: true, gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "ls-ls-proto-conflict", Namespace: "gateway-conformance-infra"}},
+		}},
 		{name: "listenerset-allowed-routes-kinds", skipCEC: true, gateway: []gwDetails{
 			{FullName: types.NamespacedName{Name: "ls-route-kinds", Namespace: "gateway-conformance-infra"}},
 		}},
