@@ -30,72 +30,138 @@ import (
 // Uses the helpers.Input interface to ensure that this still applies as new types are added.
 func (r *gatewayReconciler) runCommonRouteChecks(input routechecks.Input, parentRefs []gatewayv1.ParentReference, objNamespace string) error {
 	for _, parent := range parentRefs {
-		// If this parentRef is not a Gateway parentRef, skip it.
-		if !helpers.IsGateway(parent) {
-			continue
-		}
-
-		// Similarly, if this Gateway is not a matching one, skip it.
-		if !r.parentIsMatchingGateway(parent, objNamespace) {
-			continue
-		}
-
-		// set Accepted to okay, this wil be overwritten in checks if needed
-		input.SetParentCondition(parent, metav1.Condition{
-			Type:    string(gatewayv1.RouteConditionAccepted),
-			Status:  metav1.ConditionTrue,
-			Reason:  string(gatewayv1.RouteReasonAccepted),
-			Message: fmt.Sprintf("Accepted %s", input.GetGVK().Kind),
-		})
-
-		// set ResolvedRefs to okay, this wil be overwritten in checks if needed
-		input.SetParentCondition(parent, metav1.Condition{
-			Type:    string(gatewayv1.RouteConditionResolvedRefs),
-			Status:  metav1.ConditionTrue,
-			Reason:  string(gatewayv1.RouteReasonResolvedRefs),
-			Message: "Service reference is valid",
-		})
-
-		// run the Gateway validators
-		for _, fn := range []routechecks.CheckWithParentFunc{
-			routechecks.CheckGatewayMatchingProtocol,
-			routechecks.CheckGatewayRouteKindAllowed,
-			routechecks.CheckGatewayMatchingPorts,
-			routechecks.CheckGatewayMatchingHostnames,
-			routechecks.CheckGatewayMatchingSection,
-			routechecks.CheckGatewayAllowedForNamespace,
-		} {
-			continueCheck, err := fn(input, parent)
-			if err != nil {
-				return fmt.Errorf("failed to apply Gateway check: %w", err)
+		if helpers.IsGateway(parent) {
+			if err := r.runGatewayRouteChecks(input, parent, objNamespace); err != nil {
+				return err
 			}
-
-			if !continueCheck {
-				break
+		} else if helpers.IsListenerSet(parent) {
+			if err := r.runListenerSetRouteChecks(input, parent, objNamespace); err != nil {
+				return err
 			}
 		}
-
-		// Run the Rule validators, these need to be run per-parent so that we
-		// don't update status for parents we don't own.
-		for _, fn := range []routechecks.CheckWithParentFunc{
-			routechecks.CheckAgainstCrossNamespaceBackendReferences,
-			routechecks.CheckBackend,
-			routechecks.CheckHasServiceImportSupport,
-			routechecks.CheckBackendIsExistingService,
-		} {
-			continueCheck, err := fn(input, parent)
-			if err != nil {
-				return fmt.Errorf("failed to apply Backend check: %w", err)
-			}
-
-			if !continueCheck {
-				break
-			}
-		}
-
 	}
 
 	return nil
+}
+
+// gatewayCheckFuncs are the check functions that validate a route against a Gateway or ListenerSet's listeners.
+var gatewayCheckFuncs = []routechecks.CheckWithParentFunc{
+	routechecks.CheckGatewayMatchingProtocol,
+	routechecks.CheckGatewayRouteKindAllowed,
+	routechecks.CheckGatewayMatchingPorts,
+	routechecks.CheckGatewayMatchingHostnames,
+	routechecks.CheckGatewayMatchingSection,
+	routechecks.CheckGatewayAllowedForNamespace,
+}
+
+// backendCheckFuncs are the check functions that validate route backends.
+var backendCheckFuncs = []routechecks.CheckWithParentFunc{
+	routechecks.CheckAgainstCrossNamespaceBackendReferences,
+	routechecks.CheckBackend,
+	routechecks.CheckHasServiceImportSupport,
+	routechecks.CheckBackendIsExistingService,
+}
+
+// runCheckFuncs runs a list of check functions against an input and parent.
+func runCheckFuncs(input routechecks.Input, parent gatewayv1.ParentReference, fns []routechecks.CheckWithParentFunc, errPrefix string) error {
+	for _, fn := range fns {
+		continueCheck, err := fn(input, parent)
+		if err != nil {
+			return fmt.Errorf("failed to apply %s check: %w", errPrefix, err)
+		}
+		if !continueCheck {
+			break
+		}
+	}
+	return nil
+}
+
+// setInitialRouteConditions sets the initial Accepted and ResolvedRefs conditions for a route parent.
+func setInitialRouteConditions(input routechecks.Input, parent gatewayv1.ParentReference) {
+	input.SetParentCondition(parent, metav1.Condition{
+		Type:    string(gatewayv1.RouteConditionAccepted),
+		Status:  metav1.ConditionTrue,
+		Reason:  string(gatewayv1.RouteReasonAccepted),
+		Message: fmt.Sprintf("Accepted %s", input.GetGVK().Kind),
+	})
+	input.SetParentCondition(parent, metav1.Condition{
+		Type:    string(gatewayv1.RouteConditionResolvedRefs),
+		Status:  metav1.ConditionTrue,
+		Reason:  string(gatewayv1.RouteReasonResolvedRefs),
+		Message: "Service reference is valid",
+	})
+}
+
+// runGatewayRouteChecks runs route checks for a Gateway parentRef.
+func (r *gatewayReconciler) runGatewayRouteChecks(input routechecks.Input, parent gatewayv1.ParentReference, objNamespace string) error {
+	if !r.parentIsMatchingGateway(parent, objNamespace) {
+		return nil
+	}
+
+	setInitialRouteConditions(input, parent)
+
+	if err := runCheckFuncs(input, parent, gatewayCheckFuncs, "Gateway"); err != nil {
+		return err
+	}
+	return runCheckFuncs(input, parent, backendCheckFuncs, "Backend")
+}
+
+// runListenerSetRouteChecks runs route checks for a ListenerSet parentRef.
+func (r *gatewayReconciler) runListenerSetRouteChecks(input routechecks.Input, parent gatewayv1.ParentReference, objNamespace string) error {
+	// Look up the ListenerSet
+	ns := helpers.NamespaceDerefOr(parent.Namespace, objNamespace)
+	ls := &gatewayv1.ListenerSet{}
+	if err := r.Client.Get(context.Background(), types.NamespacedName{
+		Namespace: ns,
+		Name:      string(parent.Name),
+	}, ls); err != nil {
+		return nil // ListenerSet not found, skip
+	}
+
+	// Find the parent Gateway from the ListenerSet's parentRef
+	gwNN := helpers.ListenerSetParentGateway(ls)
+	gw := &gatewayv1.Gateway{}
+	if err := r.Client.Get(context.Background(), *gwNN, gw); err != nil {
+		return nil // Gateway not found, skip
+	}
+
+	// Check that this Gateway is managed by us
+	hasMatchingControllerFn := helpers.GatewayHasMatchingControllerFn(context.Background(), r.Client, helpers.CiliumDefaultControllerName, r.logger)
+	if !hasMatchingControllerFn(gw) {
+		return nil
+	}
+
+	setInitialRouteConditions(input, parent)
+
+	// Build a ListenerOwner with the ListenerSet's listeners for checks.
+	var listeners []gatewayv1.Listener
+	for _, entry := range ls.Spec.Listeners {
+		listeners = append(listeners, helpers.ListenerEntryToListener(entry))
+	}
+
+	// Create a wrapper input that returns our ListenerSet's listeners for GetListenerOwner calls
+	lsInput := &listenerSetRouteInput{
+		Input: input,
+		owner: &routechecks.ListenerSetListenerOwner{
+			Listeners_: listeners,
+			Namespace_: ls.GetNamespace(),
+		},
+	}
+
+	if err := runCheckFuncs(lsInput, parent, gatewayCheckFuncs, "Gateway for ListenerSet"); err != nil {
+		return err
+	}
+	return runCheckFuncs(input, parent, backendCheckFuncs, "Backend for ListenerSet")
+}
+
+// listenerSetRouteInput wraps an Input to override GetListenerOwner for ListenerSet parentRefs.
+type listenerSetRouteInput struct {
+	routechecks.Input
+	owner routechecks.ListenerOwner
+}
+
+func (l *listenerSetRouteInput) GetListenerOwner(parent gatewayv1.ParentReference) (routechecks.ListenerOwner, error) {
+	return l.owner, nil
 }
 
 func (r *gatewayReconciler) parentIsMatchingGateway(parent gatewayv1.ParentReference, namespace string) bool {

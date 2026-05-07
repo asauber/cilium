@@ -257,6 +257,9 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		setGatewayProgrammed(gw, metav1.ConditionFalse, "Unable to set listener status", gatewayv1.GatewayReasonListenersNotValid)
 		return r.handleReconcileErrorWithStatus(ctx, err, original, gw)
 	}
+
+	// Set status on attached ListenerSets (per-listener conditions + top-level Accepted/Programmed)
+	r.setListenerSetStatuses(ctx, gw, attachedListenerSets, httpRouteList, tlsRouteList, grpcRouteList)
 	if !validListener {
 		err := fmt.Errorf("No Accepted Listeners for Gateway")
 		scopedLog.ErrorContext(ctx, "No Accepted Listeners for Gateway", logfields.Error, err)
@@ -500,7 +503,9 @@ func (r *gatewayReconciler) resolveAllowedListeners(ctx context.Context, scopedL
 		}
 	}
 
-	gw.Status.AttachedListenerSets = &attachedCount
+	if attachedCount > 0 {
+		gw.Status.AttachedListenerSets = &attachedCount
+	}
 	return merged, attachedSets
 }
 
