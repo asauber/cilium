@@ -156,3 +156,35 @@ func gatewayListenerInvalidRouteKinds(gw *gatewayv1.Gateway, msg string) metav1.
 		LastTransitionTime: metav1.NewTime(time.Now()),
 	}
 }
+
+// setListenerSetAccepted sets the Accepted condition on a ListenerSet.
+func setListenerSetAccepted(ls *gatewayv1.ListenerSet, accepted bool, msg string, reason gatewayv1.ListenerSetConditionReason) {
+	status := metav1.ConditionTrue
+	if !accepted {
+		status = metav1.ConditionFalse
+	}
+	ls.Status.Conditions = merge(ls.Status.Conditions, metav1.Condition{
+		Type:               string(gatewayv1.ListenerSetConditionAccepted),
+		Status:             status,
+		Reason:             string(reason),
+		Message:            msg,
+		ObservedGeneration: ls.GetGeneration(),
+		LastTransitionTime: metav1.NewTime(time.Now()),
+	})
+}
+
+// setListenerSetProgrammed sets the Programmed condition on a ListenerSet.
+func setListenerSetProgrammed(ls *gatewayv1.ListenerSet, programmed bool, msg string, reason gatewayv1.ListenerSetConditionReason) {
+	status := metav1.ConditionTrue
+	if !programmed {
+		status = metav1.ConditionFalse
+	}
+	ls.Status.Conditions = merge(ls.Status.Conditions, metav1.Condition{
+		Type:               string(gatewayv1.ListenerSetConditionProgrammed),
+		Status:             status,
+		Reason:             string(reason),
+		Message:            msg,
+		ObservedGeneration: ls.GetGeneration(),
+		LastTransitionTime: metav1.NewTime(time.Now()),
+	})
+}

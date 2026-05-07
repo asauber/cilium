@@ -7,6 +7,7 @@ import (
 	"context"
 	"log/slog"
 	"maps"
+	"sort"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -247,4 +248,68 @@ func mergeMap(left, right map[string]string) map[string]string {
 func setMergedLabelsAndAnnotations(temp, desired client.Object) {
 	temp.SetAnnotations(mergeMap(temp.GetAnnotations(), desired.GetAnnotations()))
 	temp.SetLabels(mergeMap(temp.GetLabels(), desired.GetLabels()))
+}
+
+// isListenerSetAllowed checks whether a ListenerSet is allowed to attach to the
+// given Gateway based on the Gateway's AllowedListeners configuration.
+func isListenerSetAllowed(ctx context.Context, c client.Client, gw *gatewayv1.Gateway, ls *gatewayv1.ListenerSet, logger *slog.Logger) bool {
+	if gw.Spec.AllowedListeners == nil {
+		return false
+	}
+	ns := gw.Spec.AllowedListeners.Namespaces
+	if ns == nil || ns.From == nil {
+		return false
+	}
+	switch *ns.From {
+	case gatewayv1.NamespacesFromNone:
+		return false
+	case gatewayv1.NamespacesFromAll:
+		return true
+	case gatewayv1.NamespacesFromSame:
+		return ls.GetNamespace() == gw.GetNamespace()
+	case gatewayv1.NamespacesFromSelector:
+		nsList := &corev1.NamespaceList{}
+		selector, err := metav1.LabelSelectorAsSelector(ns.Selector)
+		if err != nil {
+			logger.ErrorContext(ctx, "Unable to parse namespace selector", logfields.Error, err)
+			return false
+		}
+		if err := c.List(ctx, nsList, client.MatchingLabelsSelector{Selector: selector}); err != nil {
+			logger.ErrorContext(ctx, "Unable to list namespaces", logfields.Error, err)
+			return false
+		}
+		for _, n := range nsList.Items {
+			if n.Name == ls.GetNamespace() {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// listenerSetFQR returns a FullyQualifiedResource identifying the given ListenerSet.
+func listenerSetFQR(ls *gatewayv1.ListenerSet) model.FullyQualifiedResource {
+	return model.FullyQualifiedResource{
+		Name:      ls.GetName(),
+		Namespace: ls.GetNamespace(),
+		Group:     gatewayv1.SchemeGroupVersion.Group,
+		Version:   gatewayv1.SchemeGroupVersion.Version,
+		Kind:      "ListenerSet",
+		UID:       string(ls.GetUID()),
+	}
+}
+
+// sortListenerSets sorts ListenerSets by precedence: oldest creation timestamp
+// first, then alphabetical by namespace/name.
+func sortListenerSets(sets []gatewayv1.ListenerSet) {
+	sort.Slice(sets, func(i, j int) bool {
+		ti := sets[i].CreationTimestamp.Time
+		tj := sets[j].CreationTimestamp.Time
+		if !ti.Equal(tj) {
+			return ti.Before(tj)
+		}
+		ni := sets[i].GetNamespace() + "/" + sets[i].GetName()
+		nj := sets[j].GetNamespace() + "/" + sets[j].GetName()
+		return ni < nj
+	})
 }
