@@ -230,9 +230,9 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return controllerruntime.Fail(err)
 	}
 
-	httpRoutes := r.filterHTTPRoutesByGateway(ctx, gw, httpRouteList.Items)
-	tlsRoutes := r.filterTLSRoutesByGateway(ctx, gw, tlsRouteList.Items)
-	grpcRoutes := r.filterGRPCRoutesByGateway(ctx, gw, grpcRouteList.Items)
+	httpRoutes := r.filterHTTPRoutesByGateway(ctx, gw, attachedListenerSets, httpRouteList.Items)
+	tlsRoutes := r.filterTLSRoutesByGateway(ctx, gw, attachedListenerSets, tlsRouteList.Items)
+	grpcRoutes := r.filterGRPCRoutesByGateway(ctx, gw, attachedListenerSets, grpcRouteList.Items)
 
 	if err := r.setBackendTLSPolicyStatuses(scopedLog, ctx, httpRoutes, btlspMap, req.NamespacedName); err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to update BackendTLSPolicy Status", logfields.Error, err)
@@ -508,83 +508,6 @@ func (r *gatewayReconciler) resolveAllowedListeners(ctx context.Context, scopedL
 	return merged, attachedSets
 }
 
-// resolveAllowedNamespaces resolves a listener's allowedRoutes.namespaces policy
-// into a set of namespace names. Returns nil to indicate all namespaces are allowed.
-func resolveAllowedNamespaces(ctx context.Context, c client.Client, listenerNamespace string, listener gatewayv1.Listener, logger *slog.Logger) map[string]struct{} {
-	if listener.AllowedRoutes == nil || listener.AllowedRoutes.Namespaces == nil || listener.AllowedRoutes.Namespaces.From == nil {
-		// Default: same namespace as the listener's owner
-		return map[string]struct{}{listenerNamespace: {}}
-	}
-	switch *listener.AllowedRoutes.Namespaces.From {
-	case gatewayv1.NamespacesFromAll:
-		return nil
-	case gatewayv1.NamespacesFromSame:
-		return map[string]struct{}{listenerNamespace: {}}
-	case gatewayv1.NamespacesFromSelector:
-		nsList := &corev1.NamespaceList{}
-		selector, _ := metav1.LabelSelectorAsSelector(listener.AllowedRoutes.Namespaces.Selector)
-		if err := c.List(ctx, nsList, client.MatchingLabelsSelector{Selector: selector}); err != nil {
-			logger.ErrorContext(ctx, "Unable to list namespaces for listener", logfields.Error, err)
-			return map[string]struct{}{listenerNamespace: {}}
-		}
-		allowed := make(map[string]struct{})
-		for _, ns := range nsList.Items {
-			allowed[ns.Name] = struct{}{}
-		}
-		return allowed
-	}
-	return map[string]struct{}{listenerNamespace: {}}
-}
-
-func (r *gatewayReconciler) filterHTTPRoutesByGateway(ctx context.Context, gw *gatewayv1.Gateway, routes []gatewayv1.HTTPRoute) []gatewayv1.HTTPRoute {
-	var filtered []gatewayv1.HTTPRoute
-	allListenerHostNames := routechecks.GetAllListenerHostNames(gw.Spec.Listeners)
-	for _, route := range routes {
-		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, nil) && isAllowed(ctx, r.Client, gw, &route, r.logger) && len(computeHosts(gw, route.Spec.Hostnames, allListenerHostNames)) > 0 {
-			filtered = append(filtered, route)
-		}
-	}
-	return filtered
-}
-
-func (r *gatewayReconciler) filterGRPCRoutesByGateway(ctx context.Context, gw *gatewayv1.Gateway, routes []gatewayv1.GRPCRoute) []gatewayv1.GRPCRoute {
-	var filtered []gatewayv1.GRPCRoute
-	allListenerHostNames := routechecks.GetAllListenerHostNames(gw.Spec.Listeners)
-
-	for _, route := range routes {
-		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, nil) && isAllowed(ctx, r.Client, gw, &route, r.logger) && len(computeHosts(gw, route.Spec.Hostnames, allListenerHostNames)) > 0 {
-			filtered = append(filtered, route)
-		}
-	}
-	return filtered
-}
-
-func (r *gatewayReconciler) filterHTTPRoutesByListener(ctx context.Context, gw *gatewayv1.Gateway, listener *gatewayv1.Listener, routes []gatewayv1.HTTPRoute) []gatewayv1.HTTPRoute {
-	var filtered []gatewayv1.HTTPRoute
-	for _, route := range routes {
-		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, nil) &&
-			listenerisAllowed(ctx, r.Client, gw, listener, &route, r.logger) &&
-			len(computeHostsForListener(listener, route.Spec.Hostnames, nil)) > 0 &&
-			parentRefMatched(gw, listener, route.GetNamespace(), route.Spec.ParentRefs) {
-			filtered = append(filtered, route)
-		}
-	}
-	return filtered
-}
-
-func (r *gatewayReconciler) filterGRPCRoutesByListener(ctx context.Context, gw *gatewayv1.Gateway, listener *gatewayv1.Listener, routes []gatewayv1.GRPCRoute) []gatewayv1.GRPCRoute {
-	var filtered []gatewayv1.GRPCRoute
-	for _, route := range routes {
-		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, nil) &&
-			listenerisAllowed(ctx, r.Client, gw, listener, &route, r.logger) &&
-			len(computeHostsForListener(listener, route.Spec.Hostnames, nil)) > 0 &&
-			parentRefMatched(gw, listener, route.GetNamespace(), route.Spec.ParentRefs) {
-			filtered = append(filtered, route)
-		}
-	}
-	return filtered
-}
-
 // getGatewayClassConfig returns the CiliumGatewayClassConfig referenced by the GatewayClass.
 // If the GatewayClass does not reference a CiliumGatewayClassConfig, it returns nil.
 func (r *gatewayReconciler) getGatewayClassConfig(ctx context.Context, gwc *gatewayv1.GatewayClass) *v2alpha1.CiliumGatewayClassConfig {
@@ -602,51 +525,6 @@ func (r *gatewayReconciler) getGatewayClassConfig(ctx context.Context, gwc *gate
 		return nil
 	}
 	return res
-}
-
-func parentRefMatched(gw *gatewayv1.Gateway, listener *gatewayv1.Listener, routeNamespace string, refs []gatewayv1.ParentReference) bool {
-	for _, ref := range refs {
-		// Check if the parentRef is a Gateway before checking name and namespace
-		if !helpers.IsGateway(ref) {
-			continue
-		}
-
-		if string(ref.Name) == gw.GetName() && gw.GetNamespace() == helpers.NamespaceDerefOr(ref.Namespace, routeNamespace) {
-			if ref.SectionName == nil && ref.Port == nil {
-				return true
-			}
-			sectionNameCheck := ref.SectionName == nil || *ref.SectionName == listener.Name
-			portCheck := ref.Port == nil || *ref.Port == listener.Port
-			if sectionNameCheck && portCheck {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func (r *gatewayReconciler) filterTLSRoutesByGateway(ctx context.Context, gw *gatewayv1.Gateway, routes []gatewayv1.TLSRoute) []gatewayv1.TLSRoute {
-	var filtered []gatewayv1.TLSRoute
-	for _, route := range routes {
-		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, nil) && isAllowed(ctx, r.Client, gw, &route, r.logger) &&
-			len(computeHosts(gw, route.Spec.Hostnames, nil)) > 0 {
-			filtered = append(filtered, route)
-		}
-	}
-	return filtered
-}
-
-func (r *gatewayReconciler) filterTLSRoutesByListener(ctx context.Context, gw *gatewayv1.Gateway, listener *gatewayv1.Listener, routes []gatewayv1.TLSRoute) []gatewayv1.TLSRoute {
-	var filtered []gatewayv1.TLSRoute
-	for _, route := range routes {
-		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, nil) &&
-			listenerisAllowed(ctx, r.Client, gw, listener, &route, r.logger) &&
-			len(computeHostsForListener(listener, route.Spec.Hostnames, nil)) > 0 &&
-			parentRefMatched(gw, listener, route.GetNamespace(), route.Spec.ParentRefs) {
-			filtered = append(filtered, route)
-		}
-	}
-	return filtered
 }
 
 func (r *gatewayReconciler) setAddressStatus(ctx context.Context, gw *gatewayv1.Gateway) error {
@@ -880,9 +758,9 @@ func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1
 				gatewayListenerProgrammedCondition(gw, false, "Address not ready yet"))
 		}
 		var attachedRoutes int32
-		attachedRoutes += int32(len(r.filterHTTPRoutesByListener(ctx, gw, &l, httpRoutes.Items)))
-		attachedRoutes += int32(len(r.filterGRPCRoutesByListener(ctx, gw, &l, grpcRoutes.Items)))
-		attachedRoutes += int32(len(r.filterTLSRoutesByListener(ctx, gw, &l, tlsRoutes.Items)))
+		attachedRoutes += int32(len(r.filterHTTPRoutesByListener(ctx, gw, &l, nil, httpRoutes.Items)))
+		attachedRoutes += int32(len(r.filterGRPCRoutesByListener(ctx, gw, &l, nil, grpcRoutes.Items)))
+		attachedRoutes += int32(len(r.filterTLSRoutesByListener(ctx, gw, &l, nil, tlsRoutes.Items)))
 
 		found := false
 		for i := range gw.Status.Listeners {
