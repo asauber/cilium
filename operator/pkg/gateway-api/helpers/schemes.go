@@ -30,6 +30,7 @@ var RequiredGVKs = []schema.GroupVersionKind{
 }
 
 var AllOptionalKinds = []schema.GroupVersionKind{
+	gatewayv1.SchemeGroupVersion.WithKind(ListenerSetKind),
 	mcsapiv1beta1.SchemeGroupVersion.WithKind(ServiceImportKind),
 }
 
