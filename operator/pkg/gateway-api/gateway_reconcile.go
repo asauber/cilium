@@ -115,6 +115,10 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
+	// Build merged listener list from Gateway + attached ListenerSets.
+	// This must happen before route fetching so we know which ListenerSets to query.
+	mergedListeners, attachedListenerSets := r.resolveAllowedListeners(ctx, scopedLog, gw)
+
 	httpRouteList := &gatewayv1.HTTPRouteList{}
 	if err := r.Client.List(ctx, httpRouteList, &client.ListOptions{
 		FieldSelector: fields.OneTermEqualSelector(indexers.GatewayHTTPRouteIndex, client.ObjectKeyFromObject(original).String()),
@@ -139,6 +143,53 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			scopedLog.ErrorContext(ctx, "Unable to list TLSRoutes", logfields.Error, err)
 			return r.handleReconcileErrorWithStatus(ctx, err, original, gw)
 		}
+	}
+
+	// Also fetch Routes targeting attached ListenerSets
+	if helpers.HasListenerSetSupport(r.Client.Scheme()) {
+		for _, ls := range attachedListenerSets {
+			lsKey := client.ObjectKeyFromObject(&ls).String()
+
+			lsHTTPRoutes := &gatewayv1.HTTPRouteList{}
+			if err := r.Client.List(ctx, lsHTTPRoutes, &client.ListOptions{
+				FieldSelector: fields.OneTermEqualSelector(indexers.HTTPRouteListenerSetIndex, lsKey),
+			}); err != nil {
+				scopedLog.ErrorContext(ctx, "Unable to list HTTPRoutes for ListenerSet",
+					logfields.Error, err,
+					logfields.Resource, lsKey)
+			} else {
+				httpRouteList.Items = append(httpRouteList.Items, lsHTTPRoutes.Items...)
+			}
+
+			lsGRPCRoutes := &gatewayv1.GRPCRouteList{}
+			if err := r.Client.List(ctx, lsGRPCRoutes, &client.ListOptions{
+				FieldSelector: fields.OneTermEqualSelector(indexers.GRPCRouteListenerSetIndex, lsKey),
+			}); err != nil {
+				scopedLog.ErrorContext(ctx, "Unable to list GRPCRoutes for ListenerSet",
+					logfields.Error, err,
+					logfields.Resource, lsKey)
+			} else {
+				grpcRouteList.Items = append(grpcRouteList.Items, lsGRPCRoutes.Items...)
+			}
+
+			if helpers.HasTLSRouteSupport(r.Client.Scheme()) {
+				lsTLSRoutes := &gatewayv1.TLSRouteList{}
+				if err := r.Client.List(ctx, lsTLSRoutes, &client.ListOptions{
+					FieldSelector: fields.OneTermEqualSelector(indexers.TLSRouteListenerSetIndex, lsKey),
+				}); err != nil {
+					scopedLog.ErrorContext(ctx, "Unable to list TLSRoutes for ListenerSet",
+						logfields.Error, err,
+						logfields.Resource, lsKey)
+				} else {
+					tlsRouteList.Items = append(tlsRouteList.Items, lsTLSRoutes.Items...)
+				}
+			}
+		}
+
+		// Deduplicate routes that may appear in both Gateway and ListenerSet indices
+		httpRouteList.Items = deduplicateHTTPRoutes(httpRouteList.Items)
+		grpcRouteList.Items = deduplicateGRPCRoutes(grpcRouteList.Items)
+		tlsRouteList.Items = deduplicateTLSRoutes(tlsRouteList.Items)
 	}
 
 	btlspList := &gatewayv1.BackendTLSPolicyList{}
@@ -227,6 +278,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		ServiceImports:      serviceImportsList.Items,
 		ReferenceGrants:     grants.Items,
 		BackendTLSPolicyMap: btlspMap,
+		MergedListeners:     mergedListeners,
 	})
 
 	validListener, err := r.setListenerStatus(ctx, gw, httpRouteList, tlsRouteList, grpcRouteList, namespaceLabels)
@@ -417,6 +469,113 @@ func (r *gatewayReconciler) updateStatus(ctx context.Context, original *gatewayv
 		return nil
 	}
 	return r.Client.Status().Update(ctx, new)
+}
+
+func (r *gatewayReconciler) updateListenerSetStatus(ctx context.Context, original *gatewayv1.ListenerSet, new *gatewayv1.ListenerSet) error {
+	oldStatus := original.Status.DeepCopy()
+	newStatus := new.Status.DeepCopy()
+
+	if cmp.Equal(oldStatus, newStatus, cmpopts.IgnoreFields(metav1.Condition{}, lastTransitionTime)) {
+		return nil
+	}
+	return r.Client.Status().Update(ctx, new)
+}
+
+// resolveAllowedListeners does each of the following:
+// * builds the merged listener list from the Gateway's own listeners and any attached ListenerSets
+// * sets ListenerSet status in the case that the ListenerSet is not allowed by the Gateway
+// * sets AttachedListenerSets on Gateway status
+// * returns both the merged listener list and a list of attached ListenerSets
+func (r *gatewayReconciler) resolveAllowedListeners(ctx context.Context, scopedLog *slog.Logger, gw *gatewayv1.Gateway) ([]ingestion.ListenerWithContext, []gatewayv1.ListenerSet) {
+	gwSource := model.FullyQualifiedResource{
+		Name:      gw.GetName(),
+		Namespace: gw.GetNamespace(),
+		Group:     gatewayv1.SchemeGroupVersion.Group,
+		Version:   gatewayv1.SchemeGroupVersion.Version,
+		Kind:      "Gateway",
+		UID:       string(gw.GetUID()),
+	}
+
+	var merged []ingestion.ListenerWithContext
+	for _, l := range gw.Spec.Listeners {
+		merged = append(merged, ingestion.ListenerWithContext{
+			Listener: l,
+			Source:   gwSource,
+		})
+	}
+
+	if !helpers.HasListenerSetSupport(r.Client.Scheme()) {
+		return merged, nil
+	}
+
+	lsList := &gatewayv1.ListenerSetList{}
+	if err := r.Client.List(ctx, lsList, &client.ListOptions{
+		FieldSelector: fields.OneTermEqualSelector(indexers.ListenerSetGatewayIndex, client.ObjectKeyFromObject(gw).String()),
+	}); err != nil {
+		scopedLog.ErrorContext(ctx, "Unable to list ListenerSets", logfields.Error, err)
+		return merged, nil
+	}
+
+	sortListenerSets(lsList.Items)
+
+	var attachedCount int32
+	var attachedSets []gatewayv1.ListenerSet
+	for i := range lsList.Items {
+		ls := &lsList.Items[i]
+		if !isListenerSetAllowed(ctx, r.Client, gw, ls, scopedLog) {
+			// Write rejected status on the ListenerSet
+			original := ls.DeepCopy()
+			setListenerSetAccepted(ls, false, "ListenerSet is not allowed by the Gateway's allowedListeners policy", gatewayv1.ListenerSetReasonNotAllowed)
+			setListenerSetProgrammed(ls, false, "ListenerSet is not allowed by the Gateway's allowedListeners policy", gatewayv1.ListenerSetReasonNotAllowed)
+			if err := r.updateListenerSetStatus(ctx, original, ls); err != nil {
+				scopedLog.ErrorContext(ctx, "Unable to update ListenerSet status", logfields.Error, err)
+			}
+			continue
+		}
+		attachedCount++
+		attachedSets = append(attachedSets, *ls)
+
+		lsSource := listenerSetFQR(ls)
+		for _, entry := range ls.Spec.Listeners {
+			listener := helpers.ListenerEntryToListener(entry)
+			merged = append(merged, ingestion.ListenerWithContext{
+				Listener:          listener,
+				Source:            lsSource,
+				AllowedNamespaces: resolveAllowedNamespaces(ctx, r.Client, ls.GetNamespace(), listener, scopedLog),
+			})
+		}
+	}
+
+	gw.Status.AttachedListenerSets = &attachedCount
+	return merged, attachedSets
+}
+
+// resolveAllowedNamespaces resolves a listener's allowedRoutes.namespaces policy
+// into a set of namespace names. Returns nil to indicate all namespaces are allowed.
+func resolveAllowedNamespaces(ctx context.Context, c client.Client, listenerNamespace string, listener gatewayv1.Listener, logger *slog.Logger) map[string]struct{} {
+	if listener.AllowedRoutes == nil || listener.AllowedRoutes.Namespaces == nil || listener.AllowedRoutes.Namespaces.From == nil {
+		// Default: same namespace as the listener's owner
+		return map[string]struct{}{listenerNamespace: {}}
+	}
+	switch *listener.AllowedRoutes.Namespaces.From {
+	case gatewayv1.NamespacesFromAll:
+		return nil
+	case gatewayv1.NamespacesFromSame:
+		return map[string]struct{}{listenerNamespace: {}}
+	case gatewayv1.NamespacesFromSelector:
+		nsList := &corev1.NamespaceList{}
+		selector, _ := metav1.LabelSelectorAsSelector(listener.AllowedRoutes.Namespaces.Selector)
+		if err := c.List(ctx, nsList, client.MatchingLabelsSelector{Selector: selector}); err != nil {
+			logger.ErrorContext(ctx, "Unable to list namespaces for listener", logfields.Error, err)
+			return map[string]struct{}{listenerNamespace: {}}
+		}
+		allowed := make(map[string]struct{})
+		for _, ns := range nsList.Items {
+			allowed[ns.Name] = struct{}{}
+		}
+		return allowed
+	}
+	return map[string]struct{}{listenerNamespace: {}}
 }
 
 func (r *gatewayReconciler) filterHTTPRoutesByGateway(ctx context.Context, gw *gatewayv1.Gateway, routes []gatewayv1.HTTPRoute, namespaceLabels helpers.NamespaceLabelIndex) []gatewayv1.HTTPRoute {
