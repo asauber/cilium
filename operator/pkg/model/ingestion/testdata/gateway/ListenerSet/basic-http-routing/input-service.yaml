@@ -1,0 +1,13 @@
+- metadata:
+    creationTimestamp: null
+    name: my-service
+    namespace: default
+  spec:
+    ports:
+    - port: 8080
+      protocol: tcp
+      targetPort: 3000
+    selector:
+      app: my-service
+  status:
+    loadBalancer: {}

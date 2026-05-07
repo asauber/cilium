@@ -11,8 +11,37 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	k8syaml "sigs.k8s.io/yaml"
+
+	"github.com/cilium/cilium/operator/pkg/model"
 )
+
+// MergedListenerFixture is a YAML-serializable representation of ListenerWithContext.
+type MergedListenerFixture struct {
+	Listener          gatewayv1.Listener           `json:"listener"`
+	Source            model.FullyQualifiedResource `json:"source"`
+	AllowedNamespaces []string                     `json:"allowedNamespaces,omitempty"`
+}
+
+// toMergedListeners converts YAML fixtures into ListenerWithContext slices.
+func toMergedListeners(fixtures []MergedListenerFixture) []ListenerWithContext {
+	var result []ListenerWithContext
+	for _, f := range fixtures {
+		lwc := ListenerWithContext{
+			Listener: f.Listener,
+			Source:   f.Source,
+		}
+		if len(f.AllowedNamespaces) > 0 {
+			lwc.AllowedNamespaces = make(map[string]struct{}, len(f.AllowedNamespaces))
+			for _, ns := range f.AllowedNamespaces {
+				lwc.AllowedNamespaces[ns] = struct{}{}
+			}
+		}
+		result = append(result, lwc)
+	}
+	return result
+}
 
 func readInput(t *testing.T, file string, obj any) {
 	inputYaml, err := os.ReadFile(file)
