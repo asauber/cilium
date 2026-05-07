@@ -15,6 +15,7 @@ import (
 
 const (
 	kindGateway       = "Gateway"
+	kindListenerSet   = "ListenerSet"
 	kindService       = "Service"
 	kindServiceImport = "ServiceImport"
 	kindSecret        = "Secret"
@@ -27,12 +28,18 @@ const (
 	ReferenceGrantKind    string = "referencegrants"
 	TLSRouteKind          string = "tlsroutes"
 	TLSRouteListKind      string = "tlsroutelists"
+	ListenerSetKind       string = "listenersets"
+	ListenerSetListKind   string = "listenersetlists"
 	ServiceImportKind     string = "serviceimports"
 	ServiceImportListKind string = "serviceimportlists"
 )
 
 func IsGateway(parent gatewayv1.ParentReference) bool {
 	return (parent.Kind == nil || *parent.Kind == kindGateway) && (parent.Group == nil || *parent.Group == gatewayv1.GroupName)
+}
+
+func IsListenerSet(parent gatewayv1.ParentReference) bool {
+	return parent.Kind != nil && *parent.Kind == kindListenerSet && (parent.Group == nil || *parent.Group == gatewayv1.GroupName)
 }
 
 func IsGammaService(parent gatewayv1.ParentReference) bool {
@@ -104,6 +111,10 @@ func GetConcreteObject(schemaType schema.GroupVersionKind) runtime.Object {
 		return &gatewayv1.TLSRoute{}
 	case TLSRouteListKind:
 		return &gatewayv1.TLSRouteList{}
+	case ListenerSetKind:
+		return &gatewayv1.ListenerSet{}
+	case ListenerSetListKind:
+		return &gatewayv1.ListenerSetList{}
 	case ServiceImportKind:
 		return &mcsapiv1beta1.ServiceImport{}
 	case ServiceImportListKind:
