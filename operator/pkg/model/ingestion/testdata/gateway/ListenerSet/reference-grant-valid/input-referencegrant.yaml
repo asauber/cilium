@@ -1,0 +1,14 @@
+- metadata:
+    name: allow-all-cert
+    namespace: cert-ns
+  spec:
+    from:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      namespace: infra
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      namespace: app-ns
+    to:
+    - group: ""
+      kind: Secret

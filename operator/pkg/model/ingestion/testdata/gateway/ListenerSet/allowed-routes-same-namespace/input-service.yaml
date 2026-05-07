@@ -1,0 +1,26 @@
+- metadata:
+    creationTimestamp: null
+    name: backend-service
+    namespace: app-ns
+  spec:
+    ports:
+    - port: 8080
+      protocol: tcp
+      targetPort: 3000
+    selector:
+      app: backend-service
+  status:
+    loadBalancer: {}
+- metadata:
+    creationTimestamp: null
+    name: other-service
+    namespace: other-ns
+  spec:
+    ports:
+    - port: 8080
+      protocol: tcp
+      targetPort: 3000
+    selector:
+      app: other-service
+  status:
+    loadBalancer: {}

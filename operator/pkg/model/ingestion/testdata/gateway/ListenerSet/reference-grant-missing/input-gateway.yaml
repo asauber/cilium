@@ -1,0 +1,20 @@
+metadata:
+  creationTimestamp: null
+  name: listenerset-gateway
+  namespace: infra
+spec:
+  gatewayClassName: cilium
+  listeners:
+  - name: gw-https
+    hostname: gw.example.com
+    port: 443
+    protocol: HTTPS
+    tls:
+      mode: Terminate
+      certificateRefs:
+      - name: tls-cert
+        namespace: cert-ns
+    allowedRoutes:
+      namespaces:
+        from: Same
+status: {}
