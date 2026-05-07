@@ -44,4 +44,16 @@ const (
 	// Indexes GatewayClassCiliumGatewayClassConfigsIndex indexes GatewayClass by the CiliumGatewayClassConfig
 	// that it refers to.
 	GatewayClassCiliumGatewayClassConfigsIndex = "gatewayClassCiliumGatewayClassConfigsIndex"
+
+	// Indexes ListenerSets by the parent Gateway referenced in the object.
+	ListenerSetGatewayIndex = "listenerSetGatewayIndex"
+
+	// Indexes HTTPRoutes by all the ListenerSet parents referenced in the object.
+	ListenerSetHTTPRouteIndex = "listenerSetHTTPRouteIndex"
+
+	// Indexes GRPCRoutes by all the ListenerSet parents referenced in the object.
+	ListenerSetGRPCRouteIndex = "listenerSetGRPCRouteIndex"
+
+	// Indexes TLSRoutes by all the ListenerSet parents referenced in the object.
+	ListenerSetTLSRouteIndex = "listenerSetTLSRouteIndex"
 )
