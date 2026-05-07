@@ -63,12 +63,14 @@ func newGatewayReconciler(mgr ctrl.Manager, translator translation.Translator, l
 // The reconciler will be triggered by Gateway, or any cilium-managed GatewayClass events
 func (r *gatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Determine which optional CRDs are enabled
-	var serviceImportEnabled bool
+	var serviceImportEnabled, listenerSetEnabled bool
 
 	for _, gvk := range r.installedCRDs {
 		switch gvk.Kind {
 		case helpers.ServiceImportKind:
 			serviceImportEnabled = true
+		case helpers.ListenerSetKind:
+			listenerSetEnabled = true
 		}
 	}
 
@@ -119,6 +121,23 @@ func (r *gatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return fmt.Errorf("failed to setup field indexer %q: %w", indexers.BackendTLSPolicyConfigMapIndex, err)
 	}
 
+	// Index ListenerSets by parent Gateway, and routes by ListenerSet parentRefs
+	if listenerSetEnabled {
+		if err := mgr.GetFieldIndexer().IndexField(context.Background(), &gatewayv1.ListenerSet{}, indexers.ListenerSetGatewayIndex, indexers.IndexListenerSetByGateway); err != nil {
+			return fmt.Errorf("failed to setup field indexer %q: %w", indexers.ListenerSetGatewayIndex, err)
+		}
+
+		if err := mgr.GetFieldIndexer().IndexField(context.Background(), &gatewayv1.HTTPRoute{}, indexers.HTTPRouteListenerSetIndex, indexers.IndexHTTPRouteByListenerSet); err != nil {
+			return fmt.Errorf("failed to setup field indexer %q: %w", indexers.HTTPRouteListenerSetIndex, err)
+		}
+		if err := mgr.GetFieldIndexer().IndexField(context.Background(), &gatewayv1.GRPCRoute{}, indexers.GRPCRouteListenerSetIndex, indexers.IndexGRPCRouteByListenerSet); err != nil {
+			return fmt.Errorf("failed to setup field indexer %q: %w", indexers.GRPCRouteListenerSetIndex, err)
+		}
+		if err := mgr.GetFieldIndexer().IndexField(context.Background(), &gatewayv1.TLSRoute{}, indexers.TLSRouteListenerSetIndex, indexers.IndexTLSRouteByListenerSet); err != nil {
+			return fmt.Errorf("failed to setup field indexer %q: %w", indexers.TLSRouteListenerSetIndex, err)
+		}
+	}
+
 	hasMatchingControllerFn := helpers.GatewayHasMatchingControllerFn(context.Background(), r.Client, r.controllerName, r.logger)
 	gatewayBuilder := ctrl.NewControllerManagedBy(mgr).
 		// Watch its own resource
@@ -153,6 +172,11 @@ func (r *gatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&ciliumv2.CiliumEnvoyConfig{}).
 		Owns(&corev1.Service{}).
 		Owns(&discoveryv1.EndpointSlice{})
+
+	if listenerSetEnabled {
+		// Watch ListenerSet linked to Gateway
+		gatewayBuilder = gatewayBuilder.Watches(&gatewayv1.ListenerSet{}, watchhandlers.EnqueueRequestForListenerSetOwner(r.Client, r.logger, helpers.CiliumDefaultControllerName))
+	}
 
 	if serviceImportEnabled {
 		// Watch for changes to Backend Service Imports
