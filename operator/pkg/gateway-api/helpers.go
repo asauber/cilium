@@ -93,11 +93,12 @@ func isAllowed(ctx context.Context, c client.Client, gw *gatewayv1.Gateway, rout
 	return false
 }
 
-// listenerisAllowed is a single listener check to see if a route and listerner are valid
-func listenerisAllowed(ctx context.Context, c client.Client, gw *gatewayv1.Gateway, listener *gatewayv1.Listener, route metav1.Object, logger *slog.Logger) bool {
+// listenerisAllowed is a single listener check to see if a route and listerner are valid.
+// listenerNamespace is the namespace of the listener's owner (Gateway or ListenerSet).
+func listenerisAllowed(ctx context.Context, c client.Client, listenerNamespace string, listener *gatewayv1.Listener, route metav1.Object, logger *slog.Logger) bool {
 	// all routes in the same namespace are allowed for this listener
 	if listener.AllowedRoutes == nil || listener.AllowedRoutes.Namespaces == nil {
-		return route.GetNamespace() == gw.GetNamespace()
+		return route.GetNamespace() == listenerNamespace
 	}
 
 	// check if route is kind-allowed
@@ -109,7 +110,7 @@ func listenerisAllowed(ctx context.Context, c client.Client, gw *gatewayv1.Gatew
 	case gatewayv1.NamespacesFromAll:
 		return true
 	case gatewayv1.NamespacesFromSame:
-		if route.GetNamespace() == gw.GetNamespace() {
+		if route.GetNamespace() == listenerNamespace {
 			return true
 		}
 		return false
