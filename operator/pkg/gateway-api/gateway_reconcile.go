@@ -1473,7 +1473,7 @@ func (l *listenerSetRouteInput) GetGateway(parent gatewayv1.ParentReference) (*g
 	return l.syntheticGW, nil
 }
 
-// deduplicateHTTPRoutes removes duplicate HTTPRoutes based on UID.
+// deduplicateHTTPRoutes removes duplicate HTTPRoutes based on namespace/name.
 func deduplicateHTTPRoutes(routes []gatewayv1.HTTPRoute) []gatewayv1.HTTPRoute {
 	seen := make(map[types.NamespacedName]struct{}, len(routes))
 	result := make([]gatewayv1.HTTPRoute, 0, len(routes))
@@ -1487,7 +1487,7 @@ func deduplicateHTTPRoutes(routes []gatewayv1.HTTPRoute) []gatewayv1.HTTPRoute {
 	return result
 }
 
-// deduplicateGRPCRoutes removes duplicate GRPCRoutes based on UID.
+// deduplicateGRPCRoutes removes duplicate GRPCRoutes based on namespace/name.
 func deduplicateGRPCRoutes(routes []gatewayv1.GRPCRoute) []gatewayv1.GRPCRoute {
 	seen := make(map[types.NamespacedName]struct{}, len(routes))
 	result := make([]gatewayv1.GRPCRoute, 0, len(routes))
@@ -1501,7 +1501,7 @@ func deduplicateGRPCRoutes(routes []gatewayv1.GRPCRoute) []gatewayv1.GRPCRoute {
 	return result
 }
 
-// deduplicateTLSRoutes removes duplicate TLSRoutes based on UID.
+// deduplicateTLSRoutes removes duplicate TLSRoutes based on namespace/name.
 func deduplicateTLSRoutes(routes []gatewayv1.TLSRoute) []gatewayv1.TLSRoute {
 	seen := make(map[types.NamespacedName]struct{}, len(routes))
 	result := make([]gatewayv1.TLSRoute, 0, len(routes))
