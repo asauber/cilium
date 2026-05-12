@@ -84,6 +84,8 @@ func parentRefMatchesSource(parent gatewayv1.ParentReference, source model.Fully
 
 // routeAllowed checks whether a route is allowed to attach to this listener
 // based on its parentRef matching the listener's source and namespace policy.
+// If a parentRef specifies a sectionName, it only matches the listener with
+// that exact name — it does not attach to other listeners on the same resource.
 func (l *ListenerWithContext) routeAllowed(parentRefs []gatewayv1.ParentReference, routeNamespace string) bool {
 	if l.AllowedNamespaces != nil {
 		if _, ok := l.AllowedNamespaces[routeNamespace]; !ok {
@@ -92,6 +94,10 @@ func (l *ListenerWithContext) routeAllowed(parentRefs []gatewayv1.ParentReferenc
 	}
 	for _, parent := range parentRefs {
 		if parentRefMatchesSource(parent, l.Source, routeNamespace) {
+			// If sectionName is set, only attach to the named listener.
+			if parent.SectionName != nil && string(*parent.SectionName) != string(l.Listener.Name) {
+				continue
+			}
 			return true
 		}
 	}

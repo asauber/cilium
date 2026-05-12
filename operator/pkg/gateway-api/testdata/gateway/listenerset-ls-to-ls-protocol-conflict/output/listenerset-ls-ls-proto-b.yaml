@@ -48,6 +48,11 @@ status:
           reason: ProtocolConflict
           status: "True"
           type: Conflicted
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Resolved Refs
+          reason: ResolvedRefs
+          status: "True"
+          type: ResolvedRefs
       name: tls-on-80
     - attachedRoutes: 0
       conditions:

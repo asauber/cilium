@@ -1047,6 +1047,14 @@ func (r *gatewayReconciler) setListenerSetStatuses(ctx context.Context, gw *gate
 						ObservedGeneration: ls.GetGeneration(),
 						LastTransitionTime: metav1.Now(),
 					},
+					metav1.Condition{
+						Type:               string(gatewayv1.ListenerConditionResolvedRefs),
+						Status:             metav1.ConditionTrue,
+						Reason:             string(gatewayv1.ListenerReasonResolvedRefs),
+						Message:            "Resolved Refs",
+						ObservedGeneration: ls.GetGeneration(),
+						LastTransitionTime: metav1.Now(),
+					},
 				)
 			}
 
