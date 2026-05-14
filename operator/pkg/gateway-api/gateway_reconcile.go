@@ -771,6 +771,133 @@ func (r *gatewayReconciler) setStaticAddressStatus(ctx context.Context, gw *gate
 	return nil
 }
 
+// listenerValidationParams provides context for validating a single listener.
+type listenerValidationParams struct {
+	ownerNamespace string
+	ownerKind      string // "Gateway" or "ListenerSet"
+	generation     int64
+	grants         []gatewayv1.ReferenceGrant
+	ownerRef       string // for logging (resource key)
+}
+
+// listenerValidationResult holds the result of validating a single listener.
+type listenerValidationResult struct {
+	isValid         bool
+	supportedKinds  []gatewayv1.RouteGroupKind
+	invalidReason   gatewayv1.ListenerConditionReason
+	invalidMessages []string
+	conds           []metav1.Condition
+}
+
+// validateListener validates a single listener's protocol, allowed route kinds,
+// and TLS certificate references.
+func (r *gatewayReconciler) validateListener(ctx context.Context, l gatewayv1.Listener, params listenerValidationParams) listenerValidationResult {
+	res := listenerValidationResult{
+		isValid:       true,
+		invalidReason: gatewayv1.ListenerReasonInvalid,
+	}
+
+	allSupported := getSupportedRouteKinds(l.Protocol)
+	if allSupported == nil {
+		res.invalidMessages = append(res.invalidMessages, "Unsupported Listener Protocol.")
+		res.isValid = false
+	}
+
+	if l.AllowedRoutes != nil && len(l.AllowedRoutes.Kinds) > 0 {
+		res.supportedKinds = []gatewayv1.RouteGroupKind{}
+		for _, supported := range allSupported {
+			for _, allowed := range l.AllowedRoutes.Kinds {
+				if supported.Kind == allowed.Kind &&
+					groupDerefOr(allowed.Group, gatewayv1.GroupName) == string(*supported.Group) {
+					res.supportedKinds = append(res.supportedKinds, supported)
+					break
+				}
+			}
+		}
+
+		if len(res.supportedKinds) != len(l.AllowedRoutes.Kinds) {
+			res.conds = merge(res.conds, listenerInvalidRouteKinds(params.generation, "Unsupported Route Kinds in allowedRoutes.kinds"))
+		}
+
+		if len(res.supportedKinds) == 0 {
+			res.invalidMessages = append(res.invalidMessages, "None of the Allowed Route Kinds are supported.")
+			res.isValid = false
+		}
+	} else {
+		res.supportedKinds = allSupported
+	}
+
+	if l.TLS != nil {
+		ownerGVK := gatewayv1.SchemeGroupVersion.WithKind(params.ownerKind)
+		for _, cert := range l.TLS.CertificateRefs {
+			if !helpers.IsSecret(cert) {
+				res.conds = merge(res.conds, metav1.Condition{
+					Type:               string(gatewayv1.ListenerConditionResolvedRefs),
+					Status:             metav1.ConditionFalse,
+					Reason:             string(gatewayv1.ListenerReasonInvalidCertificateRef),
+					Message:            "Invalid CertificateRef",
+					ObservedGeneration: params.generation,
+					LastTransitionTime: metav1.Now(),
+				})
+				res.invalidMessages = append(res.invalidMessages, "Invalid CertificateRef, must be a Secret.")
+				res.isValid = false
+				break
+			}
+
+			if !helpers.IsSecretReferenceAllowed(params.ownerNamespace, cert, ownerGVK, params.grants) {
+				res.conds = merge(res.conds, metav1.Condition{
+					Type:               string(gatewayv1.ListenerConditionResolvedRefs),
+					Status:             metav1.ConditionFalse,
+					Reason:             string(gatewayv1.ListenerReasonRefNotPermitted),
+					Message:            "CertificateRef is not permitted",
+					ObservedGeneration: params.generation,
+					LastTransitionTime: metav1.Now(),
+				})
+				res.invalidMessages = append(res.invalidMessages, "Invalid CertificateRef, not permitted.")
+				res.isValid = false
+				break
+			}
+
+			if err := validateTLSSecret(ctx, r.Client, helpers.NamespaceDerefOr(cert.Namespace, params.ownerNamespace), string(cert.Name)); err != nil {
+				r.logger.InfoContext(ctx, "Found an invalid TLS Secret",
+					logfields.Error, err.Error(),
+					logfields.Resource, params.ownerRef)
+				res.conds = merge(res.conds, metav1.Condition{
+					Type:               string(gatewayv1.ListenerConditionResolvedRefs),
+					Status:             metav1.ConditionFalse,
+					Reason:             string(gatewayv1.ListenerReasonInvalidCertificateRef),
+					Message:            "Invalid CertificateRef",
+					ObservedGeneration: params.generation,
+					LastTransitionTime: metav1.Now(),
+				})
+				res.invalidMessages = append(res.invalidMessages, "Invalid CertificateRef, "+err.Error())
+				res.isValid = false
+				break
+			}
+		}
+		if l.Protocol == gatewayv1.TLSProtocolType && l.TLS.Mode != nil && *l.TLS.Mode == gatewayv1.TLSModeTerminate {
+			res.isValid = false
+			res.invalidMessages = append(res.invalidMessages, "Using TLSRoute with TLS.mode Terminate is unsupported.")
+			res.invalidReason = gatewayv1.ListenerReasonUnsupportedValue
+			res.supportedKinds = []gatewayv1.RouteGroupKind{}
+		}
+	}
+
+	// If valid and no ResolvedRefs condition was set by a failure, add a success one
+	if res.isValid && !helpers.IsConditionPresent(res.conds, string(gatewayv1.ListenerConditionResolvedRefs)) {
+		res.conds = merge(res.conds, metav1.Condition{
+			Type:               string(gatewayv1.ListenerConditionResolvedRefs),
+			Status:             metav1.ConditionTrue,
+			Reason:             string(gatewayv1.ListenerReasonResolvedRefs),
+			Message:            "Resolved Refs",
+			ObservedGeneration: params.generation,
+			LastTransitionTime: metav1.Now(),
+		})
+	}
+
+	return res
+}
+
 func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1.Gateway, httpRoutes *gatewayv1.HTTPRouteList, tlsRoutes *gatewayv1.TLSRouteList, grpcRoutes *gatewayv1.GRPCRouteList) (bool, error) {
 	grants := &gatewayv1.ReferenceGrantList{}
 	if err := r.Client.List(ctx, grants); err != nil {
@@ -780,125 +907,24 @@ func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1
 	// Keep track of if there is at least one Valid Listener; if not, the Gateway cannot be Accepted.
 	oneValidListener := false
 	for _, l := range gw.Spec.Listeners {
-		isValid := true
-		var invalidMessages []string
-		invalidReason := gatewayv1.ListenerReasonInvalid
+		res := r.validateListener(ctx, l, listenerValidationParams{
+			ownerNamespace: gw.Namespace,
+			ownerKind:      "Gateway",
+			generation:     gw.GetGeneration(),
+			grants:         grants.Items,
+			ownerRef:       client.ObjectKeyFromObject(gw).String(),
+		})
 
-		var conds []metav1.Condition
-
-		allSupported := getSupportedRouteKinds(l.Protocol)
-		if allSupported == nil {
-			invalidMessages = append(invalidMessages, "Unsupported Listener Protocol.")
-			isValid = false
-		}
-		supportedKinds := []gatewayv1.RouteGroupKind{}
-
-		if l.AllowedRoutes != nil && len(l.AllowedRoutes.Kinds) > 0 {
-			for _, supported := range allSupported {
-				for _, allowed := range l.AllowedRoutes.Kinds {
-					if supported.Kind == allowed.Kind &&
-						groupDerefOr(allowed.Group, gatewayv1.GroupName) == string(*supported.Group) {
-						supportedKinds = append(supportedKinds, supported)
-						break
-					}
-				}
-			}
-
-			// Add ResolvedRefs if not all explicitly allowed kinds are actually supported
-			if len(supportedKinds) != len(l.AllowedRoutes.Kinds) {
-				conds = merge(conds, gatewayListenerInvalidRouteKinds(gw, "Unsupported Route Kinds in allowedRoutes.kinds"))
-			}
-
-			if len(supportedKinds) == 0 {
-				invalidMessages = append(invalidMessages, "None of the Allowed Route Kinds are supported.")
-				isValid = false
-			}
-		} else {
-			// If there are no Kinds specified in AllowedRoutes, then supportedKinds should contain
-			// all the supported Kinds for that Protocol.
-			supportedKinds = allSupported
-		}
-
-		if l.TLS != nil {
-			for _, cert := range l.TLS.CertificateRefs {
-				if !helpers.IsSecret(cert) {
-					conds = merge(conds, metav1.Condition{
-						Type:               string(gatewayv1.ListenerConditionResolvedRefs),
-						Status:             metav1.ConditionFalse,
-						Reason:             string(gatewayv1.ListenerReasonInvalidCertificateRef),
-						Message:            "Invalid CertificateRef",
-						LastTransitionTime: metav1.Now(),
-					})
-					invalidMessages = append(invalidMessages, "Invalid CertificateRef, must be a Secret.")
-					isValid = false
-					break
-				}
-
-				if !helpers.IsSecretReferenceAllowed(gw.Namespace, cert, gatewayv1.SchemeGroupVersion.WithKind("Gateway"), grants.Items) {
-					conds = merge(conds, metav1.Condition{
-						Type:               string(gatewayv1.ListenerConditionResolvedRefs),
-						Status:             metav1.ConditionFalse,
-						Reason:             string(gatewayv1.ListenerReasonRefNotPermitted),
-						Message:            "CertificateRef is not permitted",
-						LastTransitionTime: metav1.Now(),
-					})
-					invalidMessages = append(invalidMessages, "Invalid CertificateRef, not permitted.")
-					isValid = false
-					break
-				}
-
-				if err := validateTLSSecret(ctx, r.Client, helpers.NamespaceDerefOr(cert.Namespace, gw.GetNamespace()), string(cert.Name)); err != nil {
-					r.logger.InfoContext(ctx, "Found an invalid TLS Secret",
-						logfields.Error, err.Error(),
-						logfields.Resource, client.ObjectKeyFromObject(gw).String())
-					conds = merge(conds, metav1.Condition{
-						Type:               string(gatewayv1.ListenerConditionResolvedRefs),
-						Status:             metav1.ConditionFalse,
-						Reason:             string(gatewayv1.ListenerReasonInvalidCertificateRef),
-						Message:            "Invalid CertificateRef",
-						LastTransitionTime: metav1.Now(),
-					})
-					invalidMessages = append(invalidMessages, "Invalid CertificateRef, "+err.Error())
-					isValid = false
-					break
-				}
-			}
-			// Handle terminated TLSRoute until we support it
-			if l.Protocol == gatewayv1.TLSProtocolType && *l.TLS.Mode == gatewayv1.TLSModeTerminate {
-				// Until we support this, we need to mark this as invalid.
-				isValid = false
-				invalidMessages = append(invalidMessages, "Using TLSRoute with TLS.mode Terminate is unsupported.")
-				invalidReason = gatewayv1.ListenerReasonUnsupportedValue
-				// The specific conformance test for this expects supportedKinds to be empty.
-				// This is probably an upstream bug, but work around it for now.
-				supportedKinds = []gatewayv1.RouteGroupKind{}
-			}
-
-		}
-
-		if !isValid {
+		conds := res.conds
+		if !res.isValid {
 			conds = merge(conds,
-				gatewayListenerAcceptedCondition(gw, false, invalidReason, "Listener not valid. "+strings.Join(invalidMessages, " ")),
-				gatewayListenerProgrammedCondition(gw, false, "Address not ready yet"))
-			// If the Listener is not valid, then no kinds are supported
-			// supportedKinds = []gatewayv1.RouteGroupKind{}
+				listenerAcceptedCondition(gw.GetGeneration(), false, res.invalidReason, "Listener not valid. "+strings.Join(res.invalidMessages, " ")),
+				listenerProgrammedCondition(gw.GetGeneration(), false, "Address not ready yet"))
 		} else {
-			// There's at least one Accepted listener, so the Gateway can also be Accepted.
 			oneValidListener = true
-			// If ResolvedRefs is not already present, add a successful one.
-			if !helpers.IsConditionPresent(conds, string(gatewayv1.ListenerConditionResolvedRefs)) {
-				conds = merge(conds, metav1.Condition{
-					Type:               string(gatewayv1.ListenerConditionResolvedRefs),
-					Status:             metav1.ConditionTrue,
-					Reason:             string(gatewayv1.ListenerReasonResolvedRefs),
-					Message:            "Resolved Refs",
-					ObservedGeneration: gw.GetGeneration(),
-					LastTransitionTime: metav1.Now(),
-				})
-			}
 			conds = merge(conds,
-				gatewayListenerAcceptedCondition(gw, true, gatewayv1.ListenerReasonAccepted, "Listener Accepted"),
-				gatewayListenerProgrammedCondition(gw, false, "Address not ready yet"))
+				listenerAcceptedCondition(gw.GetGeneration(), true, gatewayv1.ListenerReasonAccepted, "Listener Accepted"),
+				listenerProgrammedCondition(gw.GetGeneration(), false, "Address not ready yet"))
 		}
 		var attachedRoutes int32
 		attachedRoutes += int32(len(r.filterHTTPRoutesByListener(ctx, gw, &l, nil, httpRoutes.Items)))
@@ -909,7 +935,7 @@ func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1
 		for i := range gw.Status.Listeners {
 			if l.Name == gw.Status.Listeners[i].Name {
 				found = true
-				gw.Status.Listeners[i].SupportedKinds = supportedKinds
+				gw.Status.Listeners[i].SupportedKinds = res.supportedKinds
 				gw.Status.Listeners[i].Conditions = conds
 				gw.Status.Listeners[i].AttachedRoutes = attachedRoutes
 				break
@@ -918,7 +944,7 @@ func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1
 		if !found {
 			gw.Status.Listeners = append(gw.Status.Listeners, gatewayv1.ListenerStatus{
 				Name:           l.Name,
-				SupportedKinds: supportedKinds,
+				SupportedKinds: res.supportedKinds,
 				Conditions:     conds,
 				AttachedRoutes: attachedRoutes,
 			})
@@ -986,7 +1012,6 @@ func (r *gatewayReconciler) setListenerSetStatuses(ctx context.Context, gw *gate
 			isValid := true
 			isConflicted := false
 			var conflictReason gatewayv1.ListenerConditionReason
-			var invalidMessages []string
 
 			var conds []metav1.Condition
 
@@ -1058,154 +1083,62 @@ func (r *gatewayReconciler) setListenerSetStatuses(ctx context.Context, gw *gate
 				)
 			}
 
-			allSupported := getSupportedRouteKinds(l.Protocol)
+			var supportedKinds []gatewayv1.RouteGroupKind
 			if !isConflicted {
-				if allSupported == nil {
-					invalidMessages = append(invalidMessages, "Unsupported Listener Protocol.")
-					isValid = false
-				}
-			}
-			supportedKinds := []gatewayv1.RouteGroupKind{}
+				res := r.validateListener(ctx, l, listenerValidationParams{
+					ownerNamespace: ls.Namespace,
+					ownerKind:      "ListenerSet",
+					generation:     ls.GetGeneration(),
+					grants:         grants.Items,
+					ownerRef:       client.ObjectKeyFromObject(ls).String(),
+				})
+				isValid = res.isValid
+				supportedKinds = res.supportedKinds
+				conds = merge(conds, res.conds...)
 
-			if !isConflicted {
-				if l.AllowedRoutes != nil && len(l.AllowedRoutes.Kinds) > 0 {
-					for _, supported := range allSupported {
-						for _, allowed := range l.AllowedRoutes.Kinds {
-							if supported.Kind == allowed.Kind &&
-								groupDerefOr(allowed.Group, gatewayv1.GroupName) == string(*supported.Group) {
-								supportedKinds = append(supportedKinds, supported)
-								break
-							}
-						}
-					}
-
-					if len(supportedKinds) != len(l.AllowedRoutes.Kinds) {
-						conds = merge(conds, metav1.Condition{
-							Type:               string(gatewayv1.ListenerConditionResolvedRefs),
+				if !isValid {
+					conds = merge(conds,
+						metav1.Condition{
+							Type:               string(gatewayv1.ListenerConditionAccepted),
 							Status:             metav1.ConditionFalse,
-							Reason:             string(gatewayv1.ListenerReasonInvalidRouteKinds),
-							Message:            "Unsupported Route Kinds in allowedRoutes.kinds",
+							Reason:             string(gatewayv1.ListenerReasonInvalid),
+							Message:            "Listener not valid. " + strings.Join(res.invalidMessages, " "),
 							ObservedGeneration: ls.GetGeneration(),
 							LastTransitionTime: metav1.Now(),
-						})
-					}
-
-					if len(supportedKinds) == 0 {
-						invalidMessages = append(invalidMessages, "None of the Allowed Route Kinds are supported.")
-						isValid = false
-					}
+						},
+						metav1.Condition{
+							Type:               string(gatewayv1.ListenerConditionProgrammed),
+							Status:             metav1.ConditionFalse,
+							Reason:             string(gatewayv1.ListenerReasonInvalid),
+							Message:            "Listener not valid",
+							ObservedGeneration: ls.GetGeneration(),
+							LastTransitionTime: metav1.Now(),
+						},
+					)
 				} else {
-					supportedKinds = allSupported
+					oneValidListener = true
+					// Claim this slot for subsequent listeners
+					claimedSlots[slotKey] = listenerSlot{protocol: l.Protocol}
+
+					conds = merge(conds,
+						metav1.Condition{
+							Type:               string(gatewayv1.ListenerConditionAccepted),
+							Status:             metav1.ConditionTrue,
+							Reason:             string(gatewayv1.ListenerReasonAccepted),
+							Message:            "Listener Accepted",
+							ObservedGeneration: ls.GetGeneration(),
+							LastTransitionTime: metav1.Now(),
+						},
+						metav1.Condition{
+							Type:               string(gatewayv1.ListenerConditionProgrammed),
+							Status:             metav1.ConditionTrue,
+							Reason:             string(gatewayv1.ListenerConditionProgrammed),
+							Message:            "Listener Programmed",
+							ObservedGeneration: ls.GetGeneration(),
+							LastTransitionTime: metav1.Now(),
+						},
+					)
 				}
-
-				if l.TLS != nil {
-					for _, cert := range l.TLS.CertificateRefs {
-						if !helpers.IsSecret(cert) {
-							conds = merge(conds, metav1.Condition{
-								Type:               string(gatewayv1.ListenerConditionResolvedRefs),
-								Status:             metav1.ConditionFalse,
-								Reason:             string(gatewayv1.ListenerReasonInvalidCertificateRef),
-								Message:            "Invalid CertificateRef",
-								ObservedGeneration: ls.GetGeneration(),
-								LastTransitionTime: metav1.Now(),
-							})
-							invalidMessages = append(invalidMessages, "Invalid CertificateRef, must be a Secret.")
-							isValid = false
-							break
-						}
-
-						if !helpers.IsSecretReferenceAllowed(ls.Namespace, cert, gatewayv1.SchemeGroupVersion.WithKind("ListenerSet"), grants.Items) {
-							conds = merge(conds, metav1.Condition{
-								Type:               string(gatewayv1.ListenerConditionResolvedRefs),
-								Status:             metav1.ConditionFalse,
-								Reason:             string(gatewayv1.ListenerReasonRefNotPermitted),
-								Message:            "CertificateRef is not permitted",
-								ObservedGeneration: ls.GetGeneration(),
-								LastTransitionTime: metav1.Now(),
-							})
-							invalidMessages = append(invalidMessages, "Invalid CertificateRef, not permitted.")
-							isValid = false
-							break
-						}
-
-						if err := validateTLSSecret(ctx, r.Client, helpers.NamespaceDerefOr(cert.Namespace, ls.GetNamespace()), string(cert.Name)); err != nil {
-							r.logger.InfoContext(ctx, "Found an invalid TLS Secret in ListenerSet",
-								logfields.Error, err.Error(),
-								logfields.Resource, client.ObjectKeyFromObject(ls).String())
-							conds = merge(conds, metav1.Condition{
-								Type:               string(gatewayv1.ListenerConditionResolvedRefs),
-								Status:             metav1.ConditionFalse,
-								Reason:             string(gatewayv1.ListenerReasonInvalidCertificateRef),
-								Message:            "Invalid CertificateRef",
-								ObservedGeneration: ls.GetGeneration(),
-								LastTransitionTime: metav1.Now(),
-							})
-							invalidMessages = append(invalidMessages, "Invalid CertificateRef, "+err.Error())
-							isValid = false
-							break
-						}
-					}
-					// Handle terminated TLSRoute until we support it
-					if l.Protocol == gatewayv1.TLSProtocolType && l.TLS.Mode != nil && *l.TLS.Mode == gatewayv1.TLSModeTerminate {
-						isValid = false
-						invalidMessages = append(invalidMessages, "Using TLSRoute with TLS.mode Terminate is unsupported.")
-						supportedKinds = []gatewayv1.RouteGroupKind{}
-					}
-				}
-			}
-
-			if !isConflicted && !isValid {
-				conds = merge(conds,
-					metav1.Condition{
-						Type:               string(gatewayv1.ListenerConditionAccepted),
-						Status:             metav1.ConditionFalse,
-						Reason:             string(gatewayv1.ListenerReasonInvalid),
-						Message:            "Listener not valid. " + strings.Join(invalidMessages, " "),
-						ObservedGeneration: ls.GetGeneration(),
-						LastTransitionTime: metav1.Now(),
-					},
-					metav1.Condition{
-						Type:               string(gatewayv1.ListenerConditionProgrammed),
-						Status:             metav1.ConditionFalse,
-						Reason:             string(gatewayv1.ListenerReasonInvalid),
-						Message:            "Listener not valid",
-						ObservedGeneration: ls.GetGeneration(),
-						LastTransitionTime: metav1.Now(),
-					},
-				)
-			} else if !isConflicted && isValid {
-				oneValidListener = true
-				// Claim this slot for subsequent listeners
-				claimedSlots[slotKey] = listenerSlot{protocol: l.Protocol}
-
-				if !helpers.IsConditionPresent(conds, string(gatewayv1.ListenerConditionResolvedRefs)) {
-					conds = merge(conds, metav1.Condition{
-						Type:               string(gatewayv1.ListenerConditionResolvedRefs),
-						Status:             metav1.ConditionTrue,
-						Reason:             string(gatewayv1.ListenerReasonResolvedRefs),
-						Message:            "Resolved Refs",
-						ObservedGeneration: ls.GetGeneration(),
-						LastTransitionTime: metav1.Now(),
-					})
-				}
-				conds = merge(conds,
-					metav1.Condition{
-						Type:               string(gatewayv1.ListenerConditionAccepted),
-						Status:             metav1.ConditionTrue,
-						Reason:             string(gatewayv1.ListenerReasonAccepted),
-						Message:            "Listener Accepted",
-						ObservedGeneration: ls.GetGeneration(),
-						LastTransitionTime: metav1.Now(),
-					},
-					metav1.Condition{
-						Type:               string(gatewayv1.ListenerConditionProgrammed),
-						Status:             metav1.ConditionTrue,
-						Reason:             string(gatewayv1.ListenerConditionProgrammed),
-						Message:            "Listener Programmed",
-						ObservedGeneration: ls.GetGeneration(),
-						LastTransitionTime: metav1.Now(),
-					},
-				)
 			}
 
 			// Count attached routes for this listener
@@ -1310,67 +1243,66 @@ func (r *gatewayReconciler) runCommonRouteChecks(input routechecks.Input, parent
 	return nil
 }
 
-// runGatewayRouteChecks runs route checks for a Gateway parentRef.
-func (r *gatewayReconciler) runGatewayRouteChecks(input routechecks.Input, parent gatewayv1.ParentReference, objNamespace string) error {
-	// If this Gateway is not a matching one, skip it.
-	if !r.parentIsMatchingGateway(parent, objNamespace) {
-		return nil
-	}
+// gatewayCheckFuncs are the check functions that validate a route against a Gateway or ListenerSet's listeners.
+var gatewayCheckFuncs = []routechecks.CheckWithParentFunc{
+	routechecks.CheckGatewayMatchingProtocol,
+	routechecks.CheckGatewayRouteKindAllowed,
+	routechecks.CheckGatewayMatchingPorts,
+	routechecks.CheckGatewayMatchingHostnames,
+	routechecks.CheckGatewayMatchingSection,
+	routechecks.CheckGatewayAllowedForNamespace,
+}
 
-	// set Accepted to okay, this will be overwritten in checks if needed
+// backendCheckFuncs are the check functions that validate route backends.
+var backendCheckFuncs = []routechecks.CheckWithParentFunc{
+	routechecks.CheckAgainstCrossNamespaceBackendReferences,
+	routechecks.CheckBackend,
+	routechecks.CheckHasServiceImportSupport,
+	routechecks.CheckBackendIsExistingService,
+}
+
+// runCheckFuncs runs a list of check functions against an input and parent.
+func runCheckFuncs(input routechecks.Input, parent gatewayv1.ParentReference, fns []routechecks.CheckWithParentFunc, errPrefix string) error {
+	for _, fn := range fns {
+		continueCheck, err := fn(input, parent)
+		if err != nil {
+			return fmt.Errorf("failed to apply %s check: %w", errPrefix, err)
+		}
+		if !continueCheck {
+			break
+		}
+	}
+	return nil
+}
+
+// setInitialRouteConditions sets the initial Accepted and ResolvedRefs conditions for a route parent.
+func setInitialRouteConditions(input routechecks.Input, parent gatewayv1.ParentReference) {
 	input.SetParentCondition(parent, metav1.Condition{
 		Type:    string(gatewayv1.RouteConditionAccepted),
 		Status:  metav1.ConditionTrue,
 		Reason:  string(gatewayv1.RouteReasonAccepted),
 		Message: fmt.Sprintf("Accepted %s", input.GetGVK().Kind),
 	})
-
-	// set ResolvedRefs to okay, this will be overwritten in checks if needed
 	input.SetParentCondition(parent, metav1.Condition{
 		Type:    string(gatewayv1.RouteConditionResolvedRefs),
 		Status:  metav1.ConditionTrue,
 		Reason:  string(gatewayv1.RouteReasonResolvedRefs),
 		Message: "Service reference is valid",
 	})
+}
 
-	// run the Gateway validators
-	for _, fn := range []routechecks.CheckWithParentFunc{
-		routechecks.CheckGatewayMatchingProtocol,
-		routechecks.CheckGatewayRouteKindAllowed,
-		routechecks.CheckGatewayMatchingPorts,
-		routechecks.CheckGatewayMatchingHostnames,
-		routechecks.CheckGatewayMatchingSection,
-		routechecks.CheckGatewayAllowedForNamespace,
-	} {
-		continueCheck, err := fn(input, parent)
-		if err != nil {
-			return fmt.Errorf("failed to apply Gateway check: %w", err)
-		}
-
-		if !continueCheck {
-			break
-		}
+// runGatewayRouteChecks runs route checks for a Gateway parentRef.
+func (r *gatewayReconciler) runGatewayRouteChecks(input routechecks.Input, parent gatewayv1.ParentReference, objNamespace string) error {
+	if !r.parentIsMatchingGateway(parent, objNamespace) {
+		return nil
 	}
 
-	// Run the Rule validators, these need to be run per-parent so that we
-	// don't update status for parents we don't own.
-	for _, fn := range []routechecks.CheckWithParentFunc{
-		routechecks.CheckAgainstCrossNamespaceBackendReferences,
-		routechecks.CheckBackend,
-		routechecks.CheckHasServiceImportSupport,
-		routechecks.CheckBackendIsExistingService,
-	} {
-		continueCheck, err := fn(input, parent)
-		if err != nil {
-			return fmt.Errorf("failed to apply Backend check: %w", err)
-		}
+	setInitialRouteConditions(input, parent)
 
-		if !continueCheck {
-			break
-		}
+	if err := runCheckFuncs(input, parent, gatewayCheckFuncs, "Gateway"); err != nil {
+		return err
 	}
-
-	return nil
+	return runCheckFuncs(input, parent, backendCheckFuncs, "Backend")
 }
 
 // runListenerSetRouteChecks runs route checks for a ListenerSet parentRef.
@@ -1398,24 +1330,9 @@ func (r *gatewayReconciler) runListenerSetRouteChecks(input routechecks.Input, p
 		return nil
 	}
 
-	// set Accepted to okay, this will be overwritten in checks if needed
-	input.SetParentCondition(parent, metav1.Condition{
-		Type:    string(gatewayv1.RouteConditionAccepted),
-		Status:  metav1.ConditionTrue,
-		Reason:  string(gatewayv1.RouteReasonAccepted),
-		Message: fmt.Sprintf("Accepted %s", input.GetGVK().Kind),
-	})
-
-	// set ResolvedRefs to okay, this will be overwritten in checks if needed
-	input.SetParentCondition(parent, metav1.Condition{
-		Type:    string(gatewayv1.RouteConditionResolvedRefs),
-		Status:  metav1.ConditionTrue,
-		Reason:  string(gatewayv1.RouteReasonResolvedRefs),
-		Message: "Service reference is valid",
-	})
+	setInitialRouteConditions(input, parent)
 
 	// Build a ListenerOwner with the ListenerSet's listeners for checks.
-	// The check functions iterate over listeners, so we provide them directly.
 	var listeners []gatewayv1.Listener
 	for _, entry := range ls.Spec.Listeners {
 		listeners = append(listeners, helpers.ListenerEntryToListener(entry))
@@ -1430,43 +1347,10 @@ func (r *gatewayReconciler) runListenerSetRouteChecks(input routechecks.Input, p
 		},
 	}
 
-	// run the Gateway validators against the synthetic Gateway
-	for _, fn := range []routechecks.CheckWithParentFunc{
-		routechecks.CheckGatewayMatchingProtocol,
-		routechecks.CheckGatewayRouteKindAllowed,
-		routechecks.CheckGatewayMatchingPorts,
-		routechecks.CheckGatewayMatchingHostnames,
-		routechecks.CheckGatewayMatchingSection,
-		routechecks.CheckGatewayAllowedForNamespace,
-	} {
-		continueCheck, err := fn(lsInput, parent)
-		if err != nil {
-			return fmt.Errorf("failed to apply Gateway check for ListenerSet: %w", err)
-		}
-
-		if !continueCheck {
-			break
-		}
+	if err := runCheckFuncs(lsInput, parent, gatewayCheckFuncs, "Gateway for ListenerSet"); err != nil {
+		return err
 	}
-
-	// Run the Rule validators
-	for _, fn := range []routechecks.CheckWithParentFunc{
-		routechecks.CheckAgainstCrossNamespaceBackendReferences,
-		routechecks.CheckBackend,
-		routechecks.CheckHasServiceImportSupport,
-		routechecks.CheckBackendIsExistingService,
-	} {
-		continueCheck, err := fn(input, parent)
-		if err != nil {
-			return fmt.Errorf("failed to apply Backend check for ListenerSet: %w", err)
-		}
-
-		if !continueCheck {
-			break
-		}
-	}
-
-	return nil
+	return runCheckFuncs(input, parent, backendCheckFuncs, "Backend for ListenerSet")
 }
 
 // listenerSetRouteInput wraps an Input to override GetListenerOwner for ListenerSet parentRefs.
