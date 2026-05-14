@@ -137,7 +137,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 			lsHTTPRoutes := &gatewayv1.HTTPRouteList{}
 			if err := r.Client.List(ctx, lsHTTPRoutes, &client.ListOptions{
-				FieldSelector: fields.OneTermEqualSelector(indexers.ListenerSetHTTPRouteIndex, lsKey),
+				FieldSelector: fields.OneTermEqualSelector(indexers.HTTPRouteListenerSetIndex, lsKey),
 			}); err != nil {
 				scopedLog.ErrorContext(ctx, "Unable to list HTTPRoutes for ListenerSet", logfields.Error, err, logfields.Resource, lsKey)
 			} else {
@@ -146,7 +146,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 			lsGRPCRoutes := &gatewayv1.GRPCRouteList{}
 			if err := r.Client.List(ctx, lsGRPCRoutes, &client.ListOptions{
-				FieldSelector: fields.OneTermEqualSelector(indexers.ListenerSetGRPCRouteIndex, lsKey),
+				FieldSelector: fields.OneTermEqualSelector(indexers.GRPCRouteListenerSetIndex, lsKey),
 			}); err != nil {
 				scopedLog.ErrorContext(ctx, "Unable to list GRPCRoutes for ListenerSet", logfields.Error, err, logfields.Resource, lsKey)
 			} else {
@@ -156,7 +156,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			if helpers.HasTLSRouteSupport(r.Client.Scheme()) {
 				lsTLSRoutes := &gatewayv1.TLSRouteList{}
 				if err := r.Client.List(ctx, lsTLSRoutes, &client.ListOptions{
-					FieldSelector: fields.OneTermEqualSelector(indexers.ListenerSetTLSRouteIndex, lsKey),
+					FieldSelector: fields.OneTermEqualSelector(indexers.TLSRouteListenerSetIndex, lsKey),
 				}); err != nil {
 					scopedLog.ErrorContext(ctx, "Unable to list TLSRoutes for ListenerSet", logfields.Error, err, logfields.Resource, lsKey)
 				} else {

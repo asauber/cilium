@@ -49,11 +49,11 @@ const (
 	ListenerSetGatewayIndex = "listenerSetGatewayIndex"
 
 	// Indexes HTTPRoutes by all the ListenerSet parents referenced in the object.
-	ListenerSetHTTPRouteIndex = "listenerSetHTTPRouteIndex"
+	HTTPRouteListenerSetIndex = "listenerSetHTTPRouteIndex"
 
 	// Indexes GRPCRoutes by all the ListenerSet parents referenced in the object.
-	ListenerSetGRPCRouteIndex = "listenerSetGRPCRouteIndex"
+	GRPCRouteListenerSetIndex = "listenerSetGRPCRouteIndex"
 
 	// Indexes TLSRoutes by all the ListenerSet parents referenced in the object.
-	ListenerSetTLSRouteIndex = "listenerSetTLSRouteIndex"
+	TLSRouteListenerSetIndex = "listenerSetTLSRouteIndex"
 )

@@ -129,18 +129,18 @@ func (r *gatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			return fmt.Errorf("failed to setup field indexer %q: %w", indexers.ListenerSetGatewayIndex, err)
 		}
 		for indexName, indexerFunc := range map[string]client.IndexerFunc{
-			indexers.ListenerSetHTTPRouteIndex: indexers.IndexHTTPRouteByListenerSet,
+			indexers.HTTPRouteListenerSetIndex: indexers.IndexHTTPRouteByListenerSet,
 		} {
 			if err := mgr.GetFieldIndexer().IndexField(context.Background(), &gatewayv1.HTTPRoute{}, indexName, indexerFunc); err != nil {
 				return fmt.Errorf("failed to setup field indexer %q: %w", indexName, err)
 			}
 		}
-		if err := mgr.GetFieldIndexer().IndexField(context.Background(), &gatewayv1.GRPCRoute{}, indexers.ListenerSetGRPCRouteIndex, indexers.IndexGRPCRouteByListenerSet); err != nil {
-			return fmt.Errorf("failed to setup field indexer %q: %w", indexers.ListenerSetGRPCRouteIndex, err)
+		if err := mgr.GetFieldIndexer().IndexField(context.Background(), &gatewayv1.GRPCRoute{}, indexers.GRPCRouteListenerSetIndex, indexers.IndexGRPCRouteByListenerSet); err != nil {
+			return fmt.Errorf("failed to setup field indexer %q: %w", indexers.GRPCRouteListenerSetIndex, err)
 		}
 		if tlsRouteEnabled {
-			if err := mgr.GetFieldIndexer().IndexField(context.Background(), &gatewayv1.TLSRoute{}, indexers.ListenerSetTLSRouteIndex, indexers.IndexTLSRouteByListenerSet); err != nil {
-				return fmt.Errorf("failed to setup field indexer %q: %w", indexers.ListenerSetTLSRouteIndex, err)
+			if err := mgr.GetFieldIndexer().IndexField(context.Background(), &gatewayv1.TLSRoute{}, indexers.TLSRouteListenerSetIndex, indexers.IndexTLSRouteByListenerSet); err != nil {
+				return fmt.Errorf("failed to setup field indexer %q: %w", indexers.TLSRouteListenerSetIndex, err)
 			}
 		}
 	}

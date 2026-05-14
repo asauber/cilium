@@ -352,9 +352,9 @@ func Test_Conformance(t *testing.T) {
 			clientBuilder.WithIndex(&gatewayv1.GRPCRoute{}, indexers.GatewayGRPCRouteIndex, indexers.IndexGRPCRouteByGateway)
 			clientBuilder.WithIndex(&gatewayv1.TLSRoute{}, indexers.GatewayTLSRouteIndex, indexers.IndexTLSRouteByGateway)
 			clientBuilder.WithIndex(&gatewayv1.ListenerSet{}, indexers.ListenerSetGatewayIndex, indexers.IndexListenerSetByGateway)
-			clientBuilder.WithIndex(&gatewayv1.HTTPRoute{}, indexers.ListenerSetHTTPRouteIndex, indexers.IndexHTTPRouteByListenerSet)
-			clientBuilder.WithIndex(&gatewayv1.GRPCRoute{}, indexers.ListenerSetGRPCRouteIndex, indexers.IndexGRPCRouteByListenerSet)
-			clientBuilder.WithIndex(&gatewayv1.TLSRoute{}, indexers.ListenerSetTLSRouteIndex, indexers.IndexTLSRouteByListenerSet)
+			clientBuilder.WithIndex(&gatewayv1.HTTPRoute{}, indexers.HTTPRouteListenerSetIndex, indexers.IndexHTTPRouteByListenerSet)
+			clientBuilder.WithIndex(&gatewayv1.GRPCRoute{}, indexers.GRPCRouteListenerSetIndex, indexers.IndexGRPCRouteByListenerSet)
+			clientBuilder.WithIndex(&gatewayv1.TLSRoute{}, indexers.TLSRouteListenerSetIndex, indexers.IndexTLSRouteByListenerSet)
 
 			c := clientBuilder.Build()
 
