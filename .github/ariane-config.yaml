@@ -80,6 +80,11 @@ triggers:
     - conformance-gateway-api.yaml
     depends-on:
     - /build-images-dependency
+  /ci-gateway-api-report:
+    workflows:
+    - conformance-gateway-api-report.yaml
+    depends-on:
+    - /build-images-dependency
   /ci-mcs-api:
     workflows:
     - conformance-mcs-api.yaml
@@ -202,6 +207,8 @@ workflows:
   conformance-eks.yaml:
     paths-ignore-regex: ((bpf/complexity-tests|bpf/tests|test|Documentation|hubble|.github/actions/cl2-modules|.github/actions/e2e|.github/actions/ginkgo)/|(.github/renovate\.json5|README.rst|CODEOWNERS|stable.txt|.*\.md|.*_test\.go)$)
   conformance-gateway-api.yaml:
+    paths-ignore-regex: ((bpf/complexity-tests|bpf/tests|test|Documentation|hubble|.github/actions/cl2-modules|.github/actions/e2e|.github/actions/ginkgo)/|(.github/renovate\.json5|README.rst|CODEOWNERS|stable.txt|.*\.md|.*_test\.go)$)
+  conformance-gateway-api-report.yaml:
     paths-ignore-regex: ((bpf/complexity-tests|bpf/tests|test|Documentation|hubble|.github/actions/cl2-modules|.github/actions/e2e|.github/actions/ginkgo)/|(.github/renovate\.json5|README.rst|CODEOWNERS|stable.txt|.*\.md|.*_test\.go)$)
   conformance-mcs-api.yaml:
     paths-ignore-regex: ((bpf/complexity-tests|bpf/tests|test|Documentation|hubble|.github/actions/cl2-modules|.github/actions/e2e|.github/actions/ginkgo)/|(.github/renovate\.json5|README.rst|CODEOWNERS|stable.txt|.*\.md|.*_test\.go)$)
