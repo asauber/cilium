@@ -185,7 +185,7 @@ func (r *gatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	if listenerSetEnabled {
 		// Watch ListenerSet linked to Gateway
-		gatewayBuilder = gatewayBuilder.Watches(&gatewayv1.ListenerSet{}, watchhandlers.EnqueueRequestForOwningListenerSet(r.Client, r.logger, helpers.CiliumDefaultControllerName))
+		gatewayBuilder = gatewayBuilder.Watches(&gatewayv1.ListenerSet{}, watchhandlers.EnqueueRequestForListenerSetOwner(r.Client, r.logger, helpers.CiliumDefaultControllerName))
 	}
 
 	if serviceImportEnabled {

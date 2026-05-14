@@ -18,9 +18,9 @@ import (
 	"github.com/cilium/cilium/pkg/logging/logfields"
 )
 
-// EnqueueRequestForOwningListenerSet returns an event handler that, when passed a ListenerSet,
+// EnqueueRequestForListenerSetOwner returns an event handler that, when passed a ListenerSet,
 // returns a reconcile.Request for the parent Gateway referenced in the ListenerSet's spec.parentRef.
-func EnqueueRequestForOwningListenerSet(c client.Client, logger *slog.Logger, controllerName string) handler.EventHandler {
+func EnqueueRequestForListenerSetOwner(c client.Client, logger *slog.Logger, controllerName string) handler.EventHandler {
 	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, a client.Object) []reconcile.Request {
 		ls, ok := a.(*gatewayv1.ListenerSet)
 		if !ok {
