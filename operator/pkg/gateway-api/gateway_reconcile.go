@@ -1414,20 +1414,20 @@ func (r *gatewayReconciler) runListenerSetRouteChecks(input routechecks.Input, p
 		Message: "Service reference is valid",
 	})
 
-	// Build a synthetic Gateway with the ListenerSet's listeners for checks
-	// The check functions iterate over gw.Spec.Listeners, so we substitute them.
-	syntheticGW := gw.DeepCopy()
-	syntheticGW.Namespace = ls.GetNamespace()
-	syntheticGW.Spec.Listeners = nil
+	// Build a ListenerOwner with the ListenerSet's listeners for checks.
+	// The check functions iterate over listeners, so we provide them directly.
+	var listeners []gatewayv1.Listener
 	for _, entry := range ls.Spec.Listeners {
-		syntheticGW.Spec.Listeners = append(syntheticGW.Spec.Listeners, helpers.ListenerEntryToListener(entry))
+		listeners = append(listeners, helpers.ListenerEntryToListener(entry))
 	}
 
-	// Create a wrapper input that returns our synthetic GW for GetGateway calls
+	// Create a wrapper input that returns our ListenerSet's listeners for GetListenerOwner calls
 	lsInput := &listenerSetRouteInput{
-		Input:       input,
-		syntheticGW: syntheticGW,
-		parentRef:   parent,
+		Input: input,
+		owner: &routechecks.ListenerSetListenerOwner{
+			Listeners_: listeners,
+			Namespace_: ls.GetNamespace(),
+		},
 	}
 
 	// run the Gateway validators against the synthetic Gateway
@@ -1469,16 +1469,14 @@ func (r *gatewayReconciler) runListenerSetRouteChecks(input routechecks.Input, p
 	return nil
 }
 
-// listenerSetRouteInput wraps an Input to override GetGateway for ListenerSet parentRefs.
+// listenerSetRouteInput wraps an Input to override GetListenerOwner for ListenerSet parentRefs.
 type listenerSetRouteInput struct {
 	routechecks.Input
-	syntheticGW *gatewayv1.Gateway
-	parentRef   gatewayv1.ParentReference
+	owner routechecks.ListenerOwner
 }
 
-func (l *listenerSetRouteInput) GetGateway(parent gatewayv1.ParentReference) (*gatewayv1.Gateway, error) {
-	// For the ListenerSet parentRef, return our synthetic Gateway
-	return l.syntheticGW, nil
+func (l *listenerSetRouteInput) GetListenerOwner(parent gatewayv1.ParentReference) (routechecks.ListenerOwner, error) {
+	return l.owner, nil
 }
 
 // deduplicateHTTPRoutes removes duplicate HTTPRoutes based on namespace/name.
