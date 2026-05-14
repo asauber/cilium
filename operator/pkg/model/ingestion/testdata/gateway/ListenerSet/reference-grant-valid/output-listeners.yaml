@@ -12,7 +12,7 @@
     version: v1
     uid: gw-uid
 - hostname: ls.example.com
-  name: ls-https
+  name: listenerset-https
   port: 8443
   tls:
   - name: my-cert
@@ -23,4 +23,4 @@
     name: my-listenerset
     namespace: app-ns
     version: v1
-    uid: ls-uid
+    uid: listenerset-uid

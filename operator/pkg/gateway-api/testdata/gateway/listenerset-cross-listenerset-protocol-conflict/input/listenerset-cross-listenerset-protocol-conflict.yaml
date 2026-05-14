@@ -1,7 +1,7 @@
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: allowed-route-kinds
+  name: cross-listenerset-protocol-conflict
   namespace: gateway-conformance-infra
 spec:
   gatewayClassName: cilium
@@ -10,42 +10,43 @@ spec:
       from: Same
   listeners:
     - name: http
-      port: 80
+      port: 8888
       protocol: HTTP
       allowedRoutes:
         namespaces:
           from: Same
 ---
+# Alphabetically first ListenerSet — wins port 80
 apiVersion: gateway.networking.k8s.io/v1
 kind: ListenerSet
 metadata:
-  name: valid-kinds
+  name: protocol-alpha
   namespace: gateway-conformance-infra
 spec:
   parentRef:
-    name: allowed-route-kinds
+    name: cross-listenerset-protocol-conflict
     namespace: gateway-conformance-infra
   listeners:
-    - name: http-valid
+    - name: http-on-80
+      port: 80
+      protocol: HTTP
+---
+# Alphabetically second ListenerSet — port 80 TLS conflicts with protocol-alpha's HTTP
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: protocol-beta
+  namespace: gateway-conformance-infra
+spec:
+  parentRef:
+    name: cross-listenerset-protocol-conflict
+    namespace: gateway-conformance-infra
+  listeners:
+    - name: tls-on-80
+      port: 80
+      protocol: TLS
+      tls:
+        mode: Passthrough
+    - name: http-on-8080
       port: 8080
       protocol: HTTP
-      allowedRoutes:
-        kinds:
-          - kind: HTTPRoute
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: ListenerSet
-metadata:
-  name: invalid-kinds
-  namespace: gateway-conformance-infra
-spec:
-  parentRef:
-    name: allowed-route-kinds
-    namespace: gateway-conformance-infra
-  listeners:
-    - name: http-invalid
-      port: 9090
-      protocol: HTTP
-      allowedRoutes:
-        kinds:
-          - kind: FooRoute

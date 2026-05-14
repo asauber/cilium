@@ -8,7 +8,7 @@ metadata:
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: ls-allowed-same
+  name: allowed-namespace-same
   namespace: gateway-conformance-infra
 spec:
   gatewayClassName: cilium
@@ -26,11 +26,11 @@ spec:
 apiVersion: gateway.networking.k8s.io/v1
 kind: ListenerSet
 metadata:
-  name: ls-same-ns
+  name: same-namespace
   namespace: gateway-conformance-infra
 spec:
   parentRef:
-    name: ls-allowed-same
+    name: allowed-namespace-same
     namespace: gateway-conformance-infra
   listeners:
     - name: extra-http
@@ -40,11 +40,11 @@ spec:
 apiVersion: gateway.networking.k8s.io/v1
 kind: ListenerSet
 metadata:
-  name: ls-cross-ns
+  name: cross-namespace
   namespace: other-ns
 spec:
   parentRef:
-    name: ls-allowed-same
+    name: allowed-namespace-same
     namespace: gateway-conformance-infra
   listeners:
     - name: extra-http

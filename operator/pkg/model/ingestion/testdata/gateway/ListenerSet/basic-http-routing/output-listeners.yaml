@@ -9,7 +9,7 @@
     version: v1
     uid: gw-uid
 - hostname: "*"
-  name: ls-http
+  name: listenerset-http
   port: 8080
   routes:
   - backends:
@@ -25,4 +25,4 @@
     name: my-listenerset
     namespace: default
     version: v1
-    uid: ls-uid
+    uid: listenerset-uid

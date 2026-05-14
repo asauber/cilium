@@ -16,7 +16,7 @@
     kind: Gateway
     uid: gw-uid
 - listener:
-    name: ls-https
+    name: listenerset-https
     hostname: ls.example.com
     port: 8443
     protocol: HTTPS
@@ -31,4 +31,4 @@
     group: gateway.networking.k8s.io
     version: v1
     kind: ListenerSet
-    uid: ls-uid
+    uid: listenerset-uid

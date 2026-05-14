@@ -294,31 +294,31 @@ func Test_Conformance(t *testing.T) {
 		}},
 		// ListenerSet tests
 		{name: "listenerset-default-not-allowed", gateway: []gwDetails{
-			{FullName: types.NamespacedName{Name: "ls-default-not-allowed", Namespace: "gateway-conformance-infra"}},
+			{FullName: types.NamespacedName{Name: "default-not-allowed", Namespace: "gateway-conformance-infra"}},
 		}},
 		{name: "listenerset-allowed-namespace-none", gateway: []gwDetails{
-			{FullName: types.NamespacedName{Name: "ls-allowed-ns-none", Namespace: "gateway-conformance-infra"}},
+			{FullName: types.NamespacedName{Name: "allowed-namespace-none", Namespace: "gateway-conformance-infra"}},
 		}},
 		{name: "listenerset-allowed-namespace-same", skipCEC: true, gateway: []gwDetails{
-			{FullName: types.NamespacedName{Name: "ls-allowed-same", Namespace: "gateway-conformance-infra"}},
+			{FullName: types.NamespacedName{Name: "allowed-namespace-same", Namespace: "gateway-conformance-infra"}},
 		}},
 		{name: "listenerset-allowed-namespace-selector", skipCEC: true, gateway: []gwDetails{
-			{FullName: types.NamespacedName{Name: "ls-allowed-selector", Namespace: "gateway-conformance-infra"}},
+			{FullName: types.NamespacedName{Name: "allowed-namespace-selector", Namespace: "gateway-conformance-infra"}},
 		}},
 		{name: "listenerset-protocol-conflict", skipCEC: true, gateway: []gwDetails{
-			{FullName: types.NamespacedName{Name: "ls-proto-conflict", Namespace: "gateway-conformance-infra"}},
+			{FullName: types.NamespacedName{Name: "protocol-conflict", Namespace: "gateway-conformance-infra"}},
 		}},
 		{name: "listenerset-hostname-conflict", skipCEC: true, gateway: []gwDetails{
-			{FullName: types.NamespacedName{Name: "ls-hostname-conflict", Namespace: "gateway-conformance-infra"}},
+			{FullName: types.NamespacedName{Name: "hostname-conflict", Namespace: "gateway-conformance-infra"}},
 		}},
-		{name: "listenerset-ls-to-ls-hostname-conflict", skipCEC: true, gateway: []gwDetails{
-			{FullName: types.NamespacedName{Name: "ls-ls-hostname-conflict", Namespace: "gateway-conformance-infra"}},
+		{name: "listenerset-cross-listenerset-hostname-conflict", skipCEC: true, gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "cross-listenerset-hostname-conflict", Namespace: "gateway-conformance-infra"}},
 		}},
-		{name: "listenerset-ls-to-ls-protocol-conflict", skipCEC: true, gateway: []gwDetails{
-			{FullName: types.NamespacedName{Name: "ls-ls-proto-conflict", Namespace: "gateway-conformance-infra"}},
+		{name: "listenerset-cross-listenerset-protocol-conflict", skipCEC: true, gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "cross-listenerset-protocol-conflict", Namespace: "gateway-conformance-infra"}},
 		}},
 		{name: "listenerset-allowed-routes-kinds", skipCEC: true, gateway: []gwDetails{
-			{FullName: types.NamespacedName{Name: "ls-route-kinds", Namespace: "gateway-conformance-infra"}},
+			{FullName: types.NamespacedName{Name: "allowed-route-kinds", Namespace: "gateway-conformance-infra"}},
 		}},
 	}
 

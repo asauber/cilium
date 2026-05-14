@@ -29,12 +29,12 @@ func TestGatewayAPI_MergedListeners_Sources(t *testing.T) {
 		UID:       "gw-uid",
 	}
 	lsSource := model.FullyQualifiedResource{
-		Name:      "my-ls",
-		Namespace: "ls-ns",
+		Name:      "my-listenerset",
+		Namespace: "listenerset-ns",
 		Group:     "gateway.networking.k8s.io",
 		Version:   "v1",
 		Kind:      "ListenerSet",
-		UID:       "ls-uid",
+		UID:       "listenerset-uid",
 	}
 
 	input := Input{
@@ -50,7 +50,7 @@ func TestGatewayAPI_MergedListeners_Sources(t *testing.T) {
 			},
 			{
 				Listener: gatewayv1.Listener{
-					Name:     "ls-http",
+					Name:     "listenerset-http",
 					Port:     8080,
 					Protocol: gatewayv1.HTTPProtocolType,
 				},
@@ -71,11 +71,11 @@ func TestGatewayAPI_MergedListeners_Sources(t *testing.T) {
 	assert.Equal(t, "my-gw", httpListeners[0].Sources[0].Name)
 
 	// ListenerSet listener should have ListenerSet source
-	assert.Equal(t, "ls-http", httpListeners[1].Name)
+	assert.Equal(t, "listenerset-http", httpListeners[1].Name)
 	require.Len(t, httpListeners[1].Sources, 1)
 	assert.Equal(t, "ListenerSet", httpListeners[1].Sources[0].Kind)
-	assert.Equal(t, "ls-ns", httpListeners[1].Sources[0].Namespace)
-	assert.Equal(t, "my-ls", httpListeners[1].Sources[0].Name)
+	assert.Equal(t, "listenerset-ns", httpListeners[1].Sources[0].Namespace)
+	assert.Equal(t, "my-listenerset", httpListeners[1].Sources[0].Name)
 }
 
 func TestGatewayAPI_MergedListeners_TLSNamespace(t *testing.T) {
@@ -93,12 +93,12 @@ func TestGatewayAPI_MergedListeners_TLSNamespace(t *testing.T) {
 		UID:       "gw-uid",
 	}
 	lsSource := model.FullyQualifiedResource{
-		Name:      "my-ls",
-		Namespace: "ls-ns",
+		Name:      "my-listenerset",
+		Namespace: "listenerset-ns",
 		Group:     "gateway.networking.k8s.io",
 		Version:   "v1",
 		Kind:      "ListenerSet",
-		UID:       "ls-uid",
+		UID:       "listenerset-uid",
 	}
 
 	input := Input{
@@ -116,12 +116,12 @@ func TestGatewayAPI_MergedListeners_TLSNamespace(t *testing.T) {
 					},
 				},
 			},
-			// Grant allowing ListenerSet in ls-ns to reference secret in cert-ns
+			// Grant allowing ListenerSet in listenerset-ns to reference secret in cert-ns
 			{
-				ObjectMeta: objectMeta("cert-ns", "ls-grant"),
+				ObjectMeta: objectMeta("cert-ns", "listenerset-grant"),
 				Spec: gatewayv1.ReferenceGrantSpec{
 					From: []gatewayv1.ReferenceGrantFrom{
-						{Group: "gateway.networking.k8s.io", Kind: "ListenerSet", Namespace: "ls-ns"},
+						{Group: "gateway.networking.k8s.io", Kind: "ListenerSet", Namespace: "listenerset-ns"},
 					},
 					To: []gatewayv1.ReferenceGrantTo{
 						{Group: "", Kind: "Secret"},
@@ -147,14 +147,14 @@ func TestGatewayAPI_MergedListeners_TLSNamespace(t *testing.T) {
 			},
 			{
 				Listener: gatewayv1.Listener{
-					Name:     "ls-https",
+					Name:     "listenerset-https",
 					Port:     8443,
 					Hostname: &hostname,
 					Protocol: gatewayv1.HTTPSProtocolType,
 					TLS: &gatewayv1.ListenerTLSConfig{
 						Mode: &tlsMode,
 						CertificateRefs: []gatewayv1.SecretObjectReference{
-							{Name: "ls-cert", Namespace: namespacePtr("cert-ns")},
+							{Name: "listenerset-cert", Namespace: namespacePtr("cert-ns")},
 						},
 					},
 				},
@@ -174,9 +174,9 @@ func TestGatewayAPI_MergedListeners_TLSNamespace(t *testing.T) {
 	assert.Equal(t, "cert-ns", httpListeners[0].TLS[0].Namespace)
 
 	// ListenerSet listener should resolve TLS via ListenerSet GVK
-	assert.Equal(t, "ls-https", httpListeners[1].Name)
+	assert.Equal(t, "listenerset-https", httpListeners[1].Name)
 	require.Len(t, httpListeners[1].TLS, 1)
-	assert.Equal(t, "ls-cert", httpListeners[1].TLS[0].Name)
+	assert.Equal(t, "listenerset-cert", httpListeners[1].TLS[0].Name)
 	assert.Equal(t, "cert-ns", httpListeners[1].TLS[0].Namespace)
 }
 

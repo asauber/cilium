@@ -10,7 +10,7 @@
     kind: Gateway
     uid: gw-uid
 - listener:
-    name: ls-http
+    name: listenerset-http
     port: 8080
     protocol: HTTP
   source:
@@ -19,6 +19,6 @@
     group: gateway.networking.k8s.io
     version: v1
     kind: ListenerSet
-    uid: ls-uid
+    uid: listenerset-uid
   allowedNamespaces:
   - app-ns

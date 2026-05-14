@@ -1,7 +1,7 @@
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: ls-allowed-ns-none
+  name: allowed-namespace-none
   namespace: gateway-conformance-infra
 spec:
   gatewayClassName: cilium
@@ -19,11 +19,11 @@ spec:
 apiVersion: gateway.networking.k8s.io/v1
 kind: ListenerSet
 metadata:
-  name: ls-rejected-none
+  name: rejected-none
   namespace: gateway-conformance-infra
 spec:
   parentRef:
-    name: ls-allowed-ns-none
+    name: allowed-namespace-none
     namespace: gateway-conformance-infra
   listeners:
     - name: extra-http
