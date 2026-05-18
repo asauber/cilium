@@ -3,7 +3,7 @@
   port: 80
   routes:
   - backends:
-    - name: my-service
+    - name: backend-service
       namespace: default
       port:
         port: 8080
@@ -12,7 +12,7 @@
   sources:
   - group: gateway.networking.k8s.io
     kind: Gateway
-    name: my-gateway
+    name: listenerset-gateway
     namespace: default
     version: v1
     uid: gw-uid
@@ -22,7 +22,7 @@
   sources:
   - group: gateway.networking.k8s.io
     kind: ListenerSet
-    name: my-listenerset
+    name: additional-listeners
     namespace: default
     version: v1
     uid: listenerset-uid

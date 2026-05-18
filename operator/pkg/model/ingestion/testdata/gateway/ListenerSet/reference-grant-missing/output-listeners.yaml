@@ -4,7 +4,7 @@
   sources:
   - group: gateway.networking.k8s.io
     kind: Gateway
-    name: my-gateway
+    name: listenerset-gateway
     namespace: infra
     version: v1
     uid: gw-uid
@@ -14,7 +14,7 @@
   sources:
   - group: gateway.networking.k8s.io
     kind: ListenerSet
-    name: my-listenerset
+    name: additional-listeners
     namespace: app-ns
     version: v1
     uid: listenerset-uid

@@ -21,7 +21,7 @@ func TestGatewayAPI_MergedListeners_Sources(t *testing.T) {
 	logger := hivetest.Logger(t, hivetest.LogLevel(slog.LevelDebug))
 
 	gwSource := model.FullyQualifiedResource{
-		Name:      "my-gw",
+		Name:      "listenerset-gateway",
 		Namespace: "gw-ns",
 		Group:     "gateway.networking.k8s.io",
 		Version:   "v1",
@@ -29,7 +29,7 @@ func TestGatewayAPI_MergedListeners_Sources(t *testing.T) {
 		UID:       "gw-uid",
 	}
 	lsSource := model.FullyQualifiedResource{
-		Name:      "my-listenerset",
+		Name:      "additional-listeners",
 		Namespace: "listenerset-ns",
 		Group:     "gateway.networking.k8s.io",
 		Version:   "v1",
@@ -68,14 +68,14 @@ func TestGatewayAPI_MergedListeners_Sources(t *testing.T) {
 	require.Len(t, httpListeners[0].Sources, 1)
 	assert.Equal(t, "Gateway", httpListeners[0].Sources[0].Kind)
 	assert.Equal(t, "gw-ns", httpListeners[0].Sources[0].Namespace)
-	assert.Equal(t, "my-gw", httpListeners[0].Sources[0].Name)
+	assert.Equal(t, "listenerset-gateway", httpListeners[0].Sources[0].Name)
 
 	// ListenerSet listener should have ListenerSet source
 	assert.Equal(t, "listenerset-http", httpListeners[1].Name)
 	require.Len(t, httpListeners[1].Sources, 1)
 	assert.Equal(t, "ListenerSet", httpListeners[1].Sources[0].Kind)
 	assert.Equal(t, "listenerset-ns", httpListeners[1].Sources[0].Namespace)
-	assert.Equal(t, "my-listenerset", httpListeners[1].Sources[0].Name)
+	assert.Equal(t, "additional-listeners", httpListeners[1].Sources[0].Name)
 }
 
 func TestGatewayAPI_MergedListeners_TLSNamespace(t *testing.T) {
@@ -85,7 +85,7 @@ func TestGatewayAPI_MergedListeners_TLSNamespace(t *testing.T) {
 	tlsMode := gatewayv1.TLSModeTerminate
 
 	gwSource := model.FullyQualifiedResource{
-		Name:      "my-gw",
+		Name:      "listenerset-gateway",
 		Namespace: "gw-ns",
 		Group:     "gateway.networking.k8s.io",
 		Version:   "v1",
@@ -93,7 +93,7 @@ func TestGatewayAPI_MergedListeners_TLSNamespace(t *testing.T) {
 		UID:       "gw-uid",
 	}
 	lsSource := model.FullyQualifiedResource{
-		Name:      "my-listenerset",
+		Name:      "additional-listeners",
 		Namespace: "listenerset-ns",
 		Group:     "gateway.networking.k8s.io",
 		Version:   "v1",
@@ -185,7 +185,7 @@ func TestGatewayAPI_NilMergedListeners_FallsBack(t *testing.T) {
 
 	input := Input{
 		Gateway: gatewayv1.Gateway{
-			ObjectMeta: objectMeta("gw-ns", "my-gw"),
+			ObjectMeta: objectMeta("gw-ns", "listenerset-gateway"),
 			Spec: gatewayv1.GatewaySpec{
 				Listeners: []gatewayv1.Listener{
 					{

@@ -2,12 +2,12 @@
   name: gw-https
   port: 443
   tls:
-  - name: my-cert
+  - name: tls-cert
     namespace: cert-ns
   sources:
   - group: gateway.networking.k8s.io
     kind: Gateway
-    name: my-gateway
+    name: listenerset-gateway
     namespace: infra
     version: v1
     uid: gw-uid
@@ -17,7 +17,7 @@
   sources:
   - group: gateway.networking.k8s.io
     kind: ListenerSet
-    name: my-listenerset
+    name: additional-listeners
     namespace: app-ns
     version: v1
     uid: listenerset-uid

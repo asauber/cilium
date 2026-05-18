@@ -4,13 +4,13 @@
     namespace: app-ns
   spec:
     parentRefs:
-    - name: my-listenerset
+    - name: additional-listeners
       namespace: app-ns
       kind: ListenerSet
       group: gateway.networking.k8s.io
     rules:
     - backendRefs:
-      - name: my-service
+      - name: backend-service
         port: 8080
   status:
     parents: null
@@ -20,7 +20,7 @@
     namespace: other-ns
   spec:
     parentRefs:
-    - name: my-listenerset
+    - name: additional-listeners
       namespace: app-ns
       kind: ListenerSet
       group: gateway.networking.k8s.io

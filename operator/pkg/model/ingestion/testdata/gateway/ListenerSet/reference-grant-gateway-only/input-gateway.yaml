@@ -1,6 +1,6 @@
 metadata:
   creationTimestamp: null
-  name: my-gateway
+  name: listenerset-gateway
   namespace: infra
 spec:
   gatewayClassName: cilium
@@ -12,7 +12,7 @@ spec:
     tls:
       mode: Terminate
       certificateRefs:
-      - name: my-cert
+      - name: tls-cert
         namespace: cert-ns
     allowedRoutes:
       namespaces:

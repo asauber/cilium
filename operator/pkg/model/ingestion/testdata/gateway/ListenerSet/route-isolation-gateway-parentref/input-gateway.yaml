@@ -1,6 +1,6 @@
 metadata:
   creationTimestamp: null
-  name: my-gateway
+  name: listenerset-gateway
   namespace: default
 spec:
   gatewayClassName: cilium

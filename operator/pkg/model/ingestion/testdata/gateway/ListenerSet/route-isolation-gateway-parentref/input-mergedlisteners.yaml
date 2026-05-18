@@ -3,7 +3,7 @@
     port: 80
     protocol: HTTP
   source:
-    name: my-gateway
+    name: listenerset-gateway
     namespace: default
     group: gateway.networking.k8s.io
     version: v1
@@ -14,7 +14,7 @@
     port: 8080
     protocol: HTTP
   source:
-    name: my-listenerset
+    name: additional-listeners
     namespace: default
     group: gateway.networking.k8s.io
     version: v1

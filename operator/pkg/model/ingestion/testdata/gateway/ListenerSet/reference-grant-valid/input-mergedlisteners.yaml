@@ -6,10 +6,10 @@
     tls:
       mode: Terminate
       certificateRefs:
-      - name: my-cert
+      - name: tls-cert
         namespace: cert-ns
   source:
-    name: my-gateway
+    name: listenerset-gateway
     namespace: infra
     group: gateway.networking.k8s.io
     version: v1
@@ -23,10 +23,10 @@
     tls:
       mode: Terminate
       certificateRefs:
-      - name: my-cert
+      - name: tls-cert
         namespace: cert-ns
   source:
-    name: my-listenerset
+    name: additional-listeners
     namespace: app-ns
     group: gateway.networking.k8s.io
     version: v1
