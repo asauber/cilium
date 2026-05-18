@@ -1,0 +1,13 @@
+- metadata:
+    creationTimestamp: null
+    name: backend-service
+    namespace: default
+  spec:
+    ports:
+    - port: 8080
+      protocol: tcp
+      targetPort: 3000
+    selector:
+      app: backend-service
+  status:
+    loadBalancer: {}

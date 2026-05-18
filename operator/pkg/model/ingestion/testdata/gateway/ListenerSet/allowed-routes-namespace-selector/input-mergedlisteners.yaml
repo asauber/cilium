@@ -1,0 +1,25 @@
+- listener:
+    name: gw-http
+    port: 80
+    protocol: HTTP
+  source:
+    name: listenerset-gateway
+    namespace: infra
+    group: gateway.networking.k8s.io
+    version: v1
+    kind: Gateway
+    uid: gw-uid
+- listener:
+    name: listenerset-http
+    port: 8080
+    protocol: HTTP
+  source:
+    name: additional-listeners
+    namespace: app-ns
+    group: gateway.networking.k8s.io
+    version: v1
+    kind: ListenerSet
+    uid: listenerset-uid
+  allowedNamespaces:
+  - selected-ns
+  - app-ns

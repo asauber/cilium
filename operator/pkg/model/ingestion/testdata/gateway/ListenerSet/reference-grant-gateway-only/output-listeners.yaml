@@ -1,0 +1,23 @@
+- hostname: gw.example.com
+  name: gw-https
+  port: 443
+  tls:
+  - name: tls-cert
+    namespace: cert-ns
+  sources:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: listenerset-gateway
+    namespace: infra
+    version: v1
+    uid: gw-uid
+- hostname: ls.example.com
+  name: listenerset-https
+  port: 8443
+  sources:
+  - group: gateway.networking.k8s.io
+    kind: ListenerSet
+    name: additional-listeners
+    namespace: app-ns
+    version: v1
+    uid: listenerset-uid

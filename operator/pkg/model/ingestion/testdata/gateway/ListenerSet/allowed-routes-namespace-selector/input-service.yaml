@@ -1,0 +1,26 @@
+- metadata:
+    creationTimestamp: null
+    name: selected-service
+    namespace: selected-ns
+  spec:
+    ports:
+    - port: 8080
+      protocol: tcp
+      targetPort: 3000
+    selector:
+      app: selected-service
+  status:
+    loadBalancer: {}
+- metadata:
+    creationTimestamp: null
+    name: rejected-service
+    namespace: rejected-ns
+  spec:
+    ports:
+    - port: 8080
+      protocol: tcp
+      targetPort: 3000
+    selector:
+      app: rejected-service
+  status:
+    loadBalancer: {}

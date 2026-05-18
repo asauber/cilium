@@ -61,7 +61,7 @@ func newGatewayReconciler(mgr ctrl.Manager, translator translation.Translator, l
 // The reconciler will be triggered by Gateway, or any cilium-managed GatewayClass events
 func (r *gatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Determine which optional CRDs are enabled
-	var tlsRouteEnabled, serviceImportEnabled bool
+	var tlsRouteEnabled, serviceImportEnabled, listenerSetEnabled bool
 
 	for _, gvk := range r.installedCRDs {
 		switch gvk.Kind {
@@ -69,6 +69,8 @@ func (r *gatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			tlsRouteEnabled = true
 		case helpers.ServiceImportKind:
 			serviceImportEnabled = true
+		case helpers.ListenerSetKind:
+			listenerSetEnabled = true
 		}
 	}
 
@@ -121,6 +123,28 @@ func (r *gatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return fmt.Errorf("failed to setup field indexer %q: %w", indexers.BackendTLSPolicyConfigMapIndex, err)
 	}
 
+	// Index ListenerSets by parent Gateway, and routes by ListenerSet parentRefs
+	if listenerSetEnabled {
+		if err := mgr.GetFieldIndexer().IndexField(context.Background(), &gatewayv1.ListenerSet{}, indexers.ListenerSetGatewayIndex, indexers.IndexListenerSetByGateway); err != nil {
+			return fmt.Errorf("failed to setup field indexer %q: %w", indexers.ListenerSetGatewayIndex, err)
+		}
+		for indexName, indexerFunc := range map[string]client.IndexerFunc{
+			indexers.HTTPRouteListenerSetIndex: indexers.IndexHTTPRouteByListenerSet,
+		} {
+			if err := mgr.GetFieldIndexer().IndexField(context.Background(), &gatewayv1.HTTPRoute{}, indexName, indexerFunc); err != nil {
+				return fmt.Errorf("failed to setup field indexer %q: %w", indexName, err)
+			}
+		}
+		if err := mgr.GetFieldIndexer().IndexField(context.Background(), &gatewayv1.GRPCRoute{}, indexers.GRPCRouteListenerSetIndex, indexers.IndexGRPCRouteByListenerSet); err != nil {
+			return fmt.Errorf("failed to setup field indexer %q: %w", indexers.GRPCRouteListenerSetIndex, err)
+		}
+		if tlsRouteEnabled {
+			if err := mgr.GetFieldIndexer().IndexField(context.Background(), &gatewayv1.TLSRoute{}, indexers.TLSRouteListenerSetIndex, indexers.IndexTLSRouteByListenerSet); err != nil {
+				return fmt.Errorf("failed to setup field indexer %q: %w", indexers.TLSRouteListenerSetIndex, err)
+			}
+		}
+	}
+
 	hasMatchingControllerFn := helpers.GatewayHasMatchingControllerFn(context.Background(), r.Client, helpers.CiliumDefaultControllerName, r.logger)
 	gatewayBuilder := ctrl.NewControllerManagedBy(mgr).
 		// Watch its own resource
@@ -157,6 +181,11 @@ func (r *gatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if tlsRouteEnabled {
 		// Watch TLSRoute linked to Gateway
 		gatewayBuilder = gatewayBuilder.Watches(&gatewayv1.TLSRoute{}, watchhandlers.EnqueueRequestForOwningTLSRoute(r.Client, r.logger, helpers.CiliumDefaultControllerName))
+	}
+
+	if listenerSetEnabled {
+		// Watch ListenerSet linked to Gateway
+		gatewayBuilder = gatewayBuilder.Watches(&gatewayv1.ListenerSet{}, watchhandlers.EnqueueRequestForListenerSetOwner(r.Client, r.logger, helpers.CiliumDefaultControllerName))
 	}
 
 	if serviceImportEnabled {
