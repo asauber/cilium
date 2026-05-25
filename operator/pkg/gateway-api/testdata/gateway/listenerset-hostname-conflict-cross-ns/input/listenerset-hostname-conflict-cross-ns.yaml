@@ -1,0 +1,138 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway-api-ls-conflict-ns-a
+  labels:
+    kubernetes.io/metadata.name: gateway-api-ls-conflict-ns-a
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway-api-ls-conflict-ns-b
+  labels:
+    kubernetes.io/metadata.name: gateway-api-ls-conflict-ns-b
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: infra-backend-v1
+  namespace: gateway-api-ls-conflict-ns-a
+spec:
+  clusterIP: 10.0.0.10
+  ports:
+    - port: 8080
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: infra-backend-v1
+  namespace: gateway-api-ls-conflict-ns-b
+spec:
+  clusterIP: 10.0.0.11
+  ports:
+    - port: 8080
+      protocol: TCP
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: gateway-ls-cross-ns-conflict
+  namespace: gateway-conformance-infra
+spec:
+  gatewayClassName: cilium
+  listeners:
+    - name: gateway-listener
+      port: 80
+      protocol: HTTP
+      hostname: cross-ns-conflict-gw.com
+      allowedRoutes:
+        namespaces:
+          from: All
+  allowedListeners:
+    namespaces:
+      from: All
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: ls-cross-ns-conflict-a
+  namespace: gateway-api-ls-conflict-ns-a
+spec:
+  parentRef:
+    name: gateway-ls-cross-ns-conflict
+    namespace: gateway-conformance-infra
+  listeners:
+    - name: conflict-listener
+      port: 80
+      protocol: HTTP
+      hostname: cross-ns-conflict.com
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: unique-a-listener
+      port: 80
+      protocol: HTTP
+      hostname: unique-a.com
+      allowedRoutes:
+        namespaces:
+          from: All
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: ls-cross-ns-conflict-b
+  namespace: gateway-api-ls-conflict-ns-b
+spec:
+  parentRef:
+    name: gateway-ls-cross-ns-conflict
+    namespace: gateway-conformance-infra
+  listeners:
+    - name: conflict-listener
+      port: 80
+      protocol: HTTP
+      hostname: cross-ns-conflict.com
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: unique-b-listener
+      port: 80
+      protocol: HTTP
+      hostname: unique-b.com
+      allowedRoutes:
+        namespaces:
+          from: All
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: route-for-ls-a
+  namespace: gateway-api-ls-conflict-ns-a
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: ls-cross-ns-conflict-a
+      namespace: gateway-api-ls-conflict-ns-a
+      sectionName: conflict-listener
+  rules:
+    - backendRefs:
+        - name: infra-backend-v1
+          port: 8080
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: route-for-ls-b-unique
+  namespace: gateway-api-ls-conflict-ns-b
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: ls-cross-ns-conflict-b
+      namespace: gateway-api-ls-conflict-ns-b
+      sectionName: unique-b-listener
+  rules:
+    - backendRefs:
+        - name: infra-backend-v1
+          port: 8080

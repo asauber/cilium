@@ -1,0 +1,55 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  creationTimestamp: null
+  name: listenerset-test-allowed-routes-cross-ns
+  namespace: gateway-api-ls-cross-ns
+  resourceVersion: "999"
+spec:
+  parentRef:
+    name: gateway-with-listener-sets-test-allowed-routes
+    namespace: gateway-conformance-infra
+  listeners:
+    - name: listener-set-listener-allowed-routes-cross-ns-same
+      port: 9080
+      protocol: HTTP
+      hostname: ls-cross-ns-same.com
+      allowedRoutes:
+        namespaces:
+          from: Same
+status:
+  conditions:
+    - lastTransitionTime: "2025-07-01T00:00:00Z"
+      message: ListenerSet is accepted
+      reason: Accepted
+      status: "True"
+      type: Accepted
+    - lastTransitionTime: "2025-07-01T00:00:00Z"
+      message: ListenerSet is programmed
+      reason: Programmed
+      status: "True"
+      type: Programmed
+  listeners:
+    - attachedRoutes: 1
+      conditions:
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Resolved Refs
+          reason: ResolvedRefs
+          status: "True"
+          type: ResolvedRefs
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Listener Accepted
+          reason: Accepted
+          status: "True"
+          type: Accepted
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Listener Programmed
+          reason: Programmed
+          status: "True"
+          type: Programmed
+      name: listener-set-listener-allowed-routes-cross-ns-same
+      supportedKinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+        - group: gateway.networking.k8s.io
+          kind: GRPCRoute

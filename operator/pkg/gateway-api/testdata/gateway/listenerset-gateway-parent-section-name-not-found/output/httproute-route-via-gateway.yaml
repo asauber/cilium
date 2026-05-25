@@ -1,0 +1,34 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  creationTimestamp: null
+  name: route-via-gateway
+  namespace: gateway-conformance-infra
+  resourceVersion: "1000"
+spec:
+  parentRefs:
+    - name: gateway-section-name
+      namespace: gateway-conformance-infra
+      sectionName: ls-only-listener
+  rules:
+    - backendRefs:
+        - name: infra-backend-v2
+          port: 8080
+status:
+  parents:
+    - conditions:
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: No matching listener with sectionName ls-only-listener
+          reason: NoMatchingParent
+          status: "False"
+          type: Accepted
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Service reference is valid
+          reason: ResolvedRefs
+          status: "True"
+          type: ResolvedRefs
+      controllerName: io.cilium/gateway-controller
+      parentRef:
+        name: gateway-section-name
+        namespace: gateway-conformance-infra
+        sectionName: ls-only-listener

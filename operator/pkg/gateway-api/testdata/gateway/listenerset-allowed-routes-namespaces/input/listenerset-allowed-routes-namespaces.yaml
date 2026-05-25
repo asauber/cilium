@@ -1,0 +1,334 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway-api-routes-allowed-ns
+  labels:
+    kubernetes.io/metadata.name: gateway-api-routes-allowed-ns
+    allowed: "ns"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway-api-routes-not-allowed-ns
+  labels:
+    kubernetes.io/metadata.name: gateway-api-routes-not-allowed-ns
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway-api-ls-cross-ns
+  labels:
+    kubernetes.io/metadata.name: gateway-api-ls-cross-ns
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: infra-backend-v1
+  namespace: gateway-api-routes-allowed-ns
+spec:
+  clusterIP: 10.0.0.1
+  ports:
+    - port: 8080
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: infra-backend-v1
+  namespace: gateway-api-routes-not-allowed-ns
+spec:
+  clusterIP: 10.0.0.2
+  ports:
+    - port: 8080
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: infra-backend-v1
+  namespace: gateway-api-ls-cross-ns
+spec:
+  clusterIP: 10.0.0.3
+  ports:
+    - port: 8080
+      protocol: TCP
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: gateway-with-listener-sets-test-allowed-routes
+  namespace: gateway-conformance-infra
+spec:
+  gatewayClassName: cilium
+  allowedListeners:
+    namespaces:
+      from: All
+  listeners:
+    - name: gateway-listener
+      port: 80
+      protocol: HTTP
+      hostname: gateway-listener.com
+      allowedRoutes:
+        namespaces:
+          from: All
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: listenerset-test-allowed-routes-namespaces
+  namespace: gateway-conformance-infra
+spec:
+  parentRef:
+    name: gateway-with-listener-sets-test-allowed-routes
+    namespace: gateway-conformance-infra
+  listeners:
+    - name: listener-set-listener-allowed-routes-all
+      port: 8080
+      protocol: HTTP
+      hostname: ls-all.com
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: listener-set-listener-allowed-routes-same
+      port: 8081
+      protocol: HTTP
+      hostname: ls-same.com
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: listener-set-listener-allowed-routes-selector
+      port: 8082
+      protocol: HTTP
+      hostname: ls-selector.com
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              allowed: "ns"
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: route-in-same-namespace
+  namespace: gateway-conformance-infra
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: listenerset-test-allowed-routes-namespaces
+      namespace: gateway-conformance-infra
+  rules:
+    - backendRefs:
+        - name: infra-backend-v1
+          port: 8080
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: route-in-selected-namespace
+  namespace: gateway-api-routes-allowed-ns
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: listenerset-test-allowed-routes-namespaces
+      namespace: gateway-conformance-infra
+  rules:
+    - backendRefs:
+        - name: infra-backend-v1
+          port: 8080
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: route-not-in-selected-namespace
+  namespace: gateway-api-routes-not-allowed-ns
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: listenerset-test-allowed-routes-namespaces
+      namespace: gateway-conformance-infra
+  rules:
+    - backendRefs:
+        - name: infra-backend-v1
+          port: 8080
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: listenerset-test-allowed-routes-cross-ns
+  namespace: gateway-api-ls-cross-ns
+spec:
+  parentRef:
+    name: gateway-with-listener-sets-test-allowed-routes
+    namespace: gateway-conformance-infra
+  listeners:
+    - name: listener-set-listener-allowed-routes-cross-ns-same
+      port: 9080
+      protocol: HTTP
+      hostname: ls-cross-ns-same.com
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: route-in-listenerset-namespace
+  namespace: gateway-api-ls-cross-ns
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: listenerset-test-allowed-routes-cross-ns
+      namespace: gateway-api-ls-cross-ns
+  rules:
+    - backendRefs:
+        - name: infra-backend-v1
+          port: 8080
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: route-in-gateway-namespace
+  namespace: gateway-conformance-infra
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: listenerset-test-allowed-routes-cross-ns
+      namespace: gateway-api-ls-cross-ns
+  rules:
+    - backendRefs:
+        - name: infra-backend-v1
+          port: 8080
+---
+# Cross-namespace ListenerSet with AllowedRoutes.From: Selector
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway-api-ls-selector-cross-ns
+  labels:
+    kubernetes.io/metadata.name: gateway-api-ls-selector-cross-ns
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway-api-ls-selector-allowed-ns
+  labels:
+    kubernetes.io/metadata.name: gateway-api-ls-selector-allowed-ns
+    ls-selector-test: allowed
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway-api-ls-selector-denied-ns
+  labels:
+    kubernetes.io/metadata.name: gateway-api-ls-selector-denied-ns
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: infra-backend-v1
+  namespace: gateway-api-ls-selector-cross-ns
+spec:
+  clusterIP: 10.0.0.4
+  ports:
+    - port: 8080
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: infra-backend-v1
+  namespace: gateway-api-ls-selector-allowed-ns
+spec:
+  clusterIP: 10.0.0.5
+  ports:
+    - port: 8080
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: infra-backend-v1
+  namespace: gateway-api-ls-selector-denied-ns
+spec:
+  clusterIP: 10.0.0.6
+  ports:
+    - port: 8080
+      protocol: TCP
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: ls-selector-cross-ns
+  namespace: gateway-api-ls-selector-cross-ns
+spec:
+  parentRef:
+    name: gateway-with-listener-sets-test-allowed-routes
+    namespace: gateway-conformance-infra
+  listeners:
+    - name: ls-selector-listener
+      port: 9090
+      protocol: HTTP
+      hostname: ls-selector-cross-ns.com
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              ls-selector-test: allowed
+---
+# Route in the label-selected namespace (should be accepted)
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: route-in-selector-allowed-ns
+  namespace: gateway-api-ls-selector-allowed-ns
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: ls-selector-cross-ns
+      namespace: gateway-api-ls-selector-cross-ns
+  rules:
+    - backendRefs:
+        - name: infra-backend-v1
+          port: 8080
+---
+# Route in a non-selected namespace (should be rejected)
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: route-in-selector-denied-ns
+  namespace: gateway-api-ls-selector-denied-ns
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: ls-selector-cross-ns
+      namespace: gateway-api-ls-selector-cross-ns
+  rules:
+    - backendRefs:
+        - name: infra-backend-v1
+          port: 8080
+---
+# Route in the ListenerSet's own namespace (no matching label, should be rejected)
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: route-in-selector-ls-ns
+  namespace: gateway-api-ls-selector-cross-ns
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: ls-selector-cross-ns
+      namespace: gateway-api-ls-selector-cross-ns
+  rules:
+    - backendRefs:
+        - name: infra-backend-v1
+          port: 8080

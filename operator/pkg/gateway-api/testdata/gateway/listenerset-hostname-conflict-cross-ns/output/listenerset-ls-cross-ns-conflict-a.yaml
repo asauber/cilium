@@ -1,0 +1,85 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  creationTimestamp: null
+  name: ls-cross-ns-conflict-a
+  namespace: gateway-api-ls-conflict-ns-a
+  resourceVersion: "999"
+spec:
+  parentRef:
+    name: gateway-ls-cross-ns-conflict
+    namespace: gateway-conformance-infra
+  listeners:
+    - name: conflict-listener
+      port: 80
+      protocol: HTTP
+      hostname: cross-ns-conflict.com
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: unique-a-listener
+      port: 80
+      protocol: HTTP
+      hostname: unique-a.com
+      allowedRoutes:
+        namespaces:
+          from: All
+status:
+  conditions:
+    - lastTransitionTime: "2025-07-01T00:00:00Z"
+      message: ListenerSet is accepted
+      reason: Accepted
+      status: "True"
+      type: Accepted
+    - lastTransitionTime: "2025-07-01T00:00:00Z"
+      message: ListenerSet is programmed
+      reason: Programmed
+      status: "True"
+      type: Programmed
+  listeners:
+    - attachedRoutes: 1
+      conditions:
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Resolved Refs
+          reason: ResolvedRefs
+          status: "True"
+          type: ResolvedRefs
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Listener Accepted
+          reason: Accepted
+          status: "True"
+          type: Accepted
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Listener Programmed
+          reason: Programmed
+          status: "True"
+          type: Programmed
+      name: conflict-listener
+      supportedKinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+        - group: gateway.networking.k8s.io
+          kind: GRPCRoute
+    - attachedRoutes: 0
+      conditions:
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Resolved Refs
+          reason: ResolvedRefs
+          status: "True"
+          type: ResolvedRefs
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Listener Accepted
+          reason: Accepted
+          status: "True"
+          type: Accepted
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Listener Programmed
+          reason: Programmed
+          status: "True"
+          type: Programmed
+      name: unique-a-listener
+      supportedKinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+        - group: gateway.networking.k8s.io
+          kind: GRPCRoute
