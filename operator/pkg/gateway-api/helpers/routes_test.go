@@ -121,6 +121,114 @@ func TestIsParentAttachable(t *testing.T) {
 	}
 }
 
+func TestIsParentAttachable_ListenerSet(t *testing.T) {
+	gw := &gatewayv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-gateway",
+			Namespace: "gw-ns",
+		},
+	}
+
+	attachedLS := []gatewayv1.ListenerSet{
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-ls",
+				Namespace: "ls-ns",
+			},
+		},
+	}
+
+	lsKind := gatewayv1.Kind("ListenerSet")
+
+	tests := []struct {
+		name                 string
+		parents              []gatewayv1.RouteParentStatus
+		attachedListenerSets []gatewayv1.ListenerSet
+		want                 bool
+	}{
+		{
+			name: "ListenerSet parentRef accepted and in attachedListenerSets",
+			parents: []gatewayv1.RouteParentStatus{
+				{
+					ParentRef: gatewayv1.ParentReference{
+						Kind:      &lsKind,
+						Name:      "my-ls",
+						Namespace: ptr.To[gatewayv1.Namespace]("ls-ns"),
+					},
+					Conditions: []metav1.Condition{
+						{Type: "Accepted", Status: metav1.ConditionTrue},
+					},
+				},
+			},
+			attachedListenerSets: attachedLS,
+			want:                 true,
+		},
+		{
+			name: "ListenerSet parentRef accepted but not in attachedListenerSets",
+			parents: []gatewayv1.RouteParentStatus{
+				{
+					ParentRef: gatewayv1.ParentReference{
+						Kind:      &lsKind,
+						Name:      "unknown-ls",
+						Namespace: ptr.To[gatewayv1.Namespace]("ls-ns"),
+					},
+					Conditions: []metav1.Condition{
+						{Type: "Accepted", Status: metav1.ConditionTrue},
+					},
+				},
+			},
+			attachedListenerSets: attachedLS,
+			want:                 false,
+		},
+		{
+			name: "ListenerSet parentRef not accepted",
+			parents: []gatewayv1.RouteParentStatus{
+				{
+					ParentRef: gatewayv1.ParentReference{
+						Kind:      &lsKind,
+						Name:      "my-ls",
+						Namespace: ptr.To[gatewayv1.Namespace]("ls-ns"),
+					},
+					Conditions: []metav1.Condition{
+						{Type: "Accepted", Status: metav1.ConditionFalse},
+					},
+				},
+			},
+			attachedListenerSets: attachedLS,
+			want:                 false,
+		},
+		{
+			name: "ListenerSet parentRef with nil attachedListenerSets",
+			parents: []gatewayv1.RouteParentStatus{
+				{
+					ParentRef: gatewayv1.ParentReference{
+						Kind:      &lsKind,
+						Name:      "my-ls",
+						Namespace: ptr.To[gatewayv1.Namespace]("ls-ns"),
+					},
+					Conditions: []metav1.Condition{
+						{Type: "Accepted", Status: metav1.ConditionTrue},
+					},
+				},
+			},
+			attachedListenerSets: nil,
+			want:                 false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			route := &gatewayv1.HTTPRoute{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "ls-ns"},
+			}
+			got := IsParentAttachable(context.Background(), gw, route, tt.parents, tt.attachedListenerSets)
+			if got != tt.want {
+				t.Errorf("IsParentAttachable() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func httpRouteWithParentAndStatus(name, ns, parentName string, parentNS *string) *gatewayv1.HTTPRoute {
 	gwParentName := gatewayv1.ObjectName(parentName)
 	var gwParentNS *gatewayv1.Namespace
