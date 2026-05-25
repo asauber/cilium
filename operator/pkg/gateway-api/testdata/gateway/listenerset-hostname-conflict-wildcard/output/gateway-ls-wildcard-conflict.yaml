@@ -1,0 +1,57 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  creationTimestamp: null
+  name: gateway-ls-wildcard-conflict
+  namespace: gateway-conformance-infra
+  resourceVersion: "999"
+spec:
+  gatewayClassName: cilium
+  listeners:
+    - allowedRoutes:
+        namespaces:
+          from: Same
+      hostname: gateway-wildcard-conflict-gw.com
+      name: gateway-listener
+      port: 80
+      protocol: HTTP
+  allowedListeners:
+    namespaces:
+      from: Same
+status:
+  attachedListenerSets: 1
+  conditions:
+    - lastTransitionTime: "2025-07-01T00:00:00Z"
+      message: Gateway successfully scheduled
+      reason: Accepted
+      status: "True"
+      type: Accepted
+    - lastTransitionTime: "2025-07-01T00:00:00Z"
+      message: Gateway waiting for address
+      reason: AddressNotAssigned
+      status: "False"
+      type: Programmed
+  listeners:
+    - attachedRoutes: 0
+      conditions:
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Resolved Refs
+          reason: ResolvedRefs
+          status: "True"
+          type: ResolvedRefs
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Listener Accepted
+          reason: Accepted
+          status: "True"
+          type: Accepted
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Address not ready yet
+          reason: Pending
+          status: "False"
+          type: Programmed
+      name: gateway-listener
+      supportedKinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+        - group: gateway.networking.k8s.io
+          kind: GRPCRoute

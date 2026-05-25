@@ -1,0 +1,38 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  creationTimestamp: null
+  name: route-for-ls-b-unique
+  namespace: gateway-api-ls-conflict-ns-b
+  resourceVersion: "1000"
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: ls-cross-ns-conflict-b
+      namespace: gateway-api-ls-conflict-ns-b
+      sectionName: unique-b-listener
+  rules:
+    - backendRefs:
+        - name: infra-backend-v1
+          port: 8080
+status:
+  parents:
+    - conditions:
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Accepted HTTPRoute
+          reason: Accepted
+          status: "True"
+          type: Accepted
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Service reference is valid
+          reason: ResolvedRefs
+          status: "True"
+          type: ResolvedRefs
+      controllerName: io.cilium/gateway-controller
+      parentRef:
+        group: gateway.networking.k8s.io
+        kind: ListenerSet
+        name: ls-cross-ns-conflict-b
+        namespace: gateway-api-ls-conflict-ns-b
+        sectionName: unique-b-listener

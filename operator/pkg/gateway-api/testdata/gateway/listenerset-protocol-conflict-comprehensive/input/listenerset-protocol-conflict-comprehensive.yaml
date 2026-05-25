@@ -1,0 +1,122 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: gateway-with-listenerset-protocol-conflict
+  namespace: gateway-conformance-infra
+spec:
+  gatewayClassName: cilium
+  allowedListeners:
+    namespaces:
+      from: Same
+  listeners:
+    - name: gateway-listener
+      port: 80
+      protocol: HTTP
+      hostname: gateway-listener.com
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: protocol-conflict-with-gateway-listener
+      port: 80
+      protocol: HTTP
+      hostname: protocol-conflict-with-gateway-listener.com
+      allowedRoutes:
+        namespaces:
+          from: All
+---
+# LS-1: 3 listeners (1 valid HTTP + 1 GW conflict TCP + 1 LS-LS winner HTTP)
+# Should be Accepted (has valid listeners)
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: listenerset-with-protocol-conflict-with-gateway-1
+  namespace: gateway-conformance-infra
+spec:
+  parentRef:
+    name: gateway-with-listenerset-protocol-conflict
+    namespace: gateway-conformance-infra
+  listeners:
+    - name: listener-set-1-listener
+      port: 80
+      protocol: HTTP
+      hostname: listener-set-1-listener.com
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: protocol-conflict-with-gateway-listener
+      port: 80
+      protocol: TCP
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: protocol-conflict-with-listener-set-listener
+      port: 80
+      protocol: HTTP
+      hostname: protocol-conflict-with-listener-set-listener.com
+      allowedRoutes:
+        namespaces:
+          from: All
+---
+# LS-2: 1 listener (GW conflict TCP only)
+# Should NOT be Accepted (all listeners invalid)
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: listenerset-with-protocol-conflict-with-gateway-2
+  namespace: gateway-conformance-infra
+spec:
+  parentRef:
+    name: gateway-with-listenerset-protocol-conflict
+    namespace: gateway-conformance-infra
+  listeners:
+    - name: protocol-conflict-with-gateway-listener
+      port: 80
+      protocol: TCP
+      allowedRoutes:
+        namespaces:
+          from: All
+---
+# LS-3: 2 listeners (1 valid HTTP + 1 LS-LS conflict TCP)
+# Should be Accepted (has valid listener)
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: listenerset-with-protocol-conflict-with-listener-set-1
+  namespace: gateway-conformance-infra
+spec:
+  parentRef:
+    name: gateway-with-listenerset-protocol-conflict
+    namespace: gateway-conformance-infra
+  listeners:
+    - name: listener-set-2-listener
+      port: 80
+      protocol: HTTP
+      hostname: listener-set-2-listener.com
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: protocol-conflict-with-listener-set-listener
+      port: 80
+      protocol: TCP
+      allowedRoutes:
+        namespaces:
+          from: All
+---
+# LS-4: 1 listener (LS-LS conflict TCP only)
+# Should NOT be Accepted (all listeners invalid)
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: listenerset-with-protocol-conflict-with-listener-set-2
+  namespace: gateway-conformance-infra
+spec:
+  parentRef:
+    name: gateway-with-listenerset-protocol-conflict
+    namespace: gateway-conformance-infra
+  listeners:
+    - name: protocol-conflict-with-listener-set-listener
+      port: 80
+      protocol: TCP
+      allowedRoutes:
+        namespaces:
+          from: All

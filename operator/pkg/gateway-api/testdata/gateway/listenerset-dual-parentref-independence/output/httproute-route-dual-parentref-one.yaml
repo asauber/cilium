@@ -1,0 +1,57 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  creationTimestamp: null
+  name: route-dual-parentref-one
+  namespace: gateway-conformance-infra
+  resourceVersion: "1000"
+spec:
+  parentRefs:
+    - name: gateway-dual-parentref
+      namespace: gateway-conformance-infra
+      sectionName: ls-dual-parentref-listener
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: ls-dual-parentref
+      namespace: gateway-conformance-infra
+      sectionName: ls-dual-parentref-listener
+  rules:
+    - backendRefs:
+        - name: infra-backend-v2
+          port: 8080
+status:
+  parents:
+    - conditions:
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: No matching listener with sectionName ls-dual-parentref-listener
+          reason: NoMatchingParent
+          status: "False"
+          type: Accepted
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Service reference is valid
+          reason: ResolvedRefs
+          status: "True"
+          type: ResolvedRefs
+      controllerName: io.cilium/gateway-controller
+      parentRef:
+        name: gateway-dual-parentref
+        namespace: gateway-conformance-infra
+        sectionName: ls-dual-parentref-listener
+    - conditions:
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Accepted HTTPRoute
+          reason: Accepted
+          status: "True"
+          type: Accepted
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Service reference is valid
+          reason: ResolvedRefs
+          status: "True"
+          type: ResolvedRefs
+      controllerName: io.cilium/gateway-controller
+      parentRef:
+        group: gateway.networking.k8s.io
+        kind: ListenerSet
+        name: ls-dual-parentref
+        namespace: gateway-conformance-infra
+        sectionName: ls-dual-parentref-listener

@@ -1,0 +1,56 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: gateway-ls-wildcard-conflict
+  namespace: gateway-conformance-infra
+spec:
+  gatewayClassName: cilium
+  listeners:
+    - name: gateway-listener
+      port: 80
+      protocol: HTTP
+      hostname: gateway-wildcard-conflict-gw.com
+      allowedRoutes:
+        namespaces:
+          from: Same
+  allowedListeners:
+    namespaces:
+      from: Same
+---
+# ls-wildcard-a: alphabetically first, wins the wildcard hostname
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: ls-wildcard-a
+  namespace: gateway-conformance-infra
+spec:
+  parentRef:
+    name: gateway-ls-wildcard-conflict
+    namespace: gateway-conformance-infra
+  listeners:
+    - name: wildcard-listener
+      port: 80
+      protocol: HTTP
+      hostname: "*.wildcard-hostname-conflict.com"
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+# ls-wildcard-b: alphabetically second, loses the wildcard hostname conflict
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: ls-wildcard-b
+  namespace: gateway-conformance-infra
+spec:
+  parentRef:
+    name: gateway-ls-wildcard-conflict
+    namespace: gateway-conformance-infra
+  listeners:
+    - name: wildcard-listener
+      port: 80
+      protocol: HTTP
+      hostname: "*.wildcard-hostname-conflict.com"
+      allowedRoutes:
+        namespaces:
+          from: Same

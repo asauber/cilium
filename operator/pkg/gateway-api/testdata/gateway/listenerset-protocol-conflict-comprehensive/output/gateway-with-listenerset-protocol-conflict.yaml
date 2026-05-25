@@ -1,0 +1,87 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  creationTimestamp: null
+  name: gateway-with-listenerset-protocol-conflict
+  namespace: gateway-conformance-infra
+  resourceVersion: "999"
+spec:
+  gatewayClassName: cilium
+  allowedListeners:
+    namespaces:
+      from: Same
+  listeners:
+    - allowedRoutes:
+        namespaces:
+          from: All
+      hostname: gateway-listener.com
+      name: gateway-listener
+      port: 80
+      protocol: HTTP
+    - allowedRoutes:
+        namespaces:
+          from: All
+      hostname: protocol-conflict-with-gateway-listener.com
+      name: protocol-conflict-with-gateway-listener
+      port: 80
+      protocol: HTTP
+status:
+  attachedListenerSets: 2
+  conditions:
+    - lastTransitionTime: "2025-07-01T00:00:00Z"
+      message: Gateway successfully scheduled
+      reason: Accepted
+      status: "True"
+      type: Accepted
+    - lastTransitionTime: "2025-07-01T00:00:00Z"
+      message: Gateway waiting for address
+      reason: AddressNotAssigned
+      status: "False"
+      type: Programmed
+  listeners:
+    - attachedRoutes: 0
+      conditions:
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Resolved Refs
+          reason: ResolvedRefs
+          status: "True"
+          type: ResolvedRefs
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Listener Accepted
+          reason: Accepted
+          status: "True"
+          type: Accepted
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Address not ready yet
+          reason: Pending
+          status: "False"
+          type: Programmed
+      name: gateway-listener
+      supportedKinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+        - group: gateway.networking.k8s.io
+          kind: GRPCRoute
+    - attachedRoutes: 0
+      conditions:
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Resolved Refs
+          reason: ResolvedRefs
+          status: "True"
+          type: ResolvedRefs
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Listener Accepted
+          reason: Accepted
+          status: "True"
+          type: Accepted
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Address not ready yet
+          reason: Pending
+          status: "False"
+          type: Programmed
+      name: protocol-conflict-with-gateway-listener
+      supportedKinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+        - group: gateway.networking.k8s.io
+          kind: GRPCRoute

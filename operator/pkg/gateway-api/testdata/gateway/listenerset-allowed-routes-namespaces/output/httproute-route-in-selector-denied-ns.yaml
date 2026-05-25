@@ -1,0 +1,37 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  creationTimestamp: null
+  name: route-in-selector-denied-ns
+  namespace: gateway-api-ls-selector-denied-ns
+  resourceVersion: "1000"
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: ls-selector-cross-ns
+      namespace: gateway-api-ls-selector-cross-ns
+  rules:
+    - backendRefs:
+        - name: infra-backend-v1
+          port: 8080
+status:
+  parents:
+    - conditions:
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: HTTPRoute is not allowed to attach to this Gateway due to namespace
+            restrictions
+          reason: NotAllowedByListeners
+          status: "False"
+          type: Accepted
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Service reference is valid
+          reason: ResolvedRefs
+          status: "True"
+          type: ResolvedRefs
+      controllerName: io.cilium/gateway-controller
+      parentRef:
+        group: gateway.networking.k8s.io
+        kind: ListenerSet
+        name: ls-selector-cross-ns
+        namespace: gateway-api-ls-selector-cross-ns

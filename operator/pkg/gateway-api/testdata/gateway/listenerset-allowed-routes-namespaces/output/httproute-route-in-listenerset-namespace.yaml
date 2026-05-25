@@ -1,0 +1,36 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  creationTimestamp: null
+  name: route-in-listenerset-namespace
+  namespace: gateway-api-ls-cross-ns
+  resourceVersion: "1000"
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: listenerset-test-allowed-routes-cross-ns
+      namespace: gateway-api-ls-cross-ns
+  rules:
+    - backendRefs:
+        - name: infra-backend-v1
+          port: 8080
+status:
+  parents:
+    - conditions:
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Accepted HTTPRoute
+          reason: Accepted
+          status: "True"
+          type: Accepted
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message: Service reference is valid
+          reason: ResolvedRefs
+          status: "True"
+          type: ResolvedRefs
+      controllerName: io.cilium/gateway-controller
+      parentRef:
+        group: gateway.networking.k8s.io
+        kind: ListenerSet
+        name: listenerset-test-allowed-routes-cross-ns
+        namespace: gateway-api-ls-cross-ns

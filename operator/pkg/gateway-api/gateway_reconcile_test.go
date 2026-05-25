@@ -314,11 +314,38 @@ func Test_Conformance(t *testing.T) {
 		{name: "listenerset-cross-listenerset-hostname-conflict", skipCEC: true, gateway: []gwDetails{
 			{FullName: types.NamespacedName{Name: "cross-listenerset-hostname-conflict", Namespace: "gateway-conformance-infra"}},
 		}},
+		{name: "listenerset-hostname-conflict-wildcard", skipCEC: true, gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "gateway-ls-wildcard-conflict", Namespace: "gateway-conformance-infra"}},
+		}},
+		{name: "listenerset-hostname-conflict-cross-ns", skipCEC: true, gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "gateway-ls-cross-ns-conflict", Namespace: "gateway-conformance-infra"}},
+		}},
 		{name: "listenerset-cross-listenerset-protocol-conflict", skipCEC: true, gateway: []gwDetails{
 			{FullName: types.NamespacedName{Name: "cross-listenerset-protocol-conflict", Namespace: "gateway-conformance-infra"}},
 		}},
+		{name: "listenerset-protocol-conflict-comprehensive", skipCEC: true, gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "gateway-with-listenerset-protocol-conflict", Namespace: "gateway-conformance-infra"}},
+		}},
 		{name: "listenerset-allowed-routes-kinds", skipCEC: true, gateway: []gwDetails{
 			{FullName: types.NamespacedName{Name: "allowed-route-kinds", Namespace: "gateway-conformance-infra"}},
+		}},
+		{name: "listenerset-gateway-parent-section-name-not-found", skipCEC: true, gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "gateway-section-name", Namespace: "gateway-conformance-infra"}},
+		}},
+		{name: "listenerset-route-status-scoped-to-parentref", skipCEC: true, gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "gateway-parentref", Namespace: "gateway-conformance-infra"}},
+		}},
+		{name: "listenerset-dual-parentref-independence", skipCEC: true, gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "gateway-dual-parentref", Namespace: "gateway-conformance-infra"}},
+		}},
+		{name: "listenerset-reference-grant", skipCEC: true, gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "gateway-with-listener-sets-test-reference-grant", Namespace: "gateway-conformance-infra"}},
+		}},
+		{name: "listenerset-allowed-routes-namespaces", skipCEC: true, gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "gateway-with-listener-sets-test-allowed-routes", Namespace: "gateway-conformance-infra"}},
+		}},
+		{name: "listenerset-http-routing", skipCEC: true, gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "gateway-with-listener-sets-http-routing", Namespace: "gateway-conformance-infra"}},
 		}},
 	}
 
