@@ -11,36 +11,43 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	k8syaml "sigs.k8s.io/yaml"
-
-	"github.com/cilium/cilium/operator/pkg/model"
 )
 
-// MergedListenerFixture is a YAML-serializable representation of ListenerWithContext.
-type MergedListenerFixture struct {
-	Listener          gatewayv1.Listener           `json:"listener"`
-	Source            model.FullyQualifiedResource `json:"source"`
-	AllowedNamespaces []string                     `json:"allowedNamespaces,omitempty"`
-}
-
-// toMergedListeners converts YAML fixtures into ListenerWithContext slices.
-func toMergedListeners(fixtures []MergedListenerFixture) []ListenerWithContext {
-	var result []ListenerWithContext
-	for _, f := range fixtures {
-		lwc := ListenerWithContext{
-			Listener: f.Listener,
-			Source:   f.Source,
+// namespaceResolver returns an AllowedNamespacesResolver that mirrors the
+// gateway-api reconciler's resolveAllowedNamespaces, but evaluates the
+// listener's allowedRoutes.namespaces policy against the supplied in-memory
+// Namespace objects (rather than via a Kubernetes client). The Selector case
+// is the only one that consults the namespace list; the other cases are
+// derived purely from the listener spec.
+func namespaceResolver(t *testing.T, namespaces []corev1.Namespace) AllowedNamespacesResolver {
+	t.Helper()
+	return func(listenerNamespace string, l gatewayv1.Listener) map[string]struct{} {
+		if l.AllowedRoutes == nil || l.AllowedRoutes.Namespaces == nil || l.AllowedRoutes.Namespaces.From == nil {
+			return map[string]struct{}{listenerNamespace: {}}
 		}
-		if len(f.AllowedNamespaces) > 0 {
-			lwc.AllowedNamespaces = make(map[string]struct{}, len(f.AllowedNamespaces))
-			for _, ns := range f.AllowedNamespaces {
-				lwc.AllowedNamespaces[ns] = struct{}{}
+		switch *l.AllowedRoutes.Namespaces.From {
+		case gatewayv1.NamespacesFromAll:
+			return nil
+		case gatewayv1.NamespacesFromSame:
+			return map[string]struct{}{listenerNamespace: {}}
+		case gatewayv1.NamespacesFromSelector:
+			sel, err := metav1.LabelSelectorAsSelector(l.AllowedRoutes.Namespaces.Selector)
+			require.NoError(t, err)
+			allowed := map[string]struct{}{}
+			for _, ns := range namespaces {
+				if sel.Matches(labels.Set(ns.Labels)) {
+					allowed[ns.Name] = struct{}{}
+				}
 			}
+			return allowed
 		}
-		result = append(result, lwc)
+		return map[string]struct{}{listenerNamespace: {}}
 	}
-	return result
 }
 
 func readInput(t *testing.T, file string, obj any) {

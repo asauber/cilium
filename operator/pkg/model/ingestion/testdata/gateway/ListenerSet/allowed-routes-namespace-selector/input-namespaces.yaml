@@ -1,0 +1,12 @@
+- metadata:
+    name: selected-ns
+    labels:
+      team: app
+- metadata:
+    name: app-ns
+    labels:
+      team: app
+- metadata:
+    name: rejected-ns
+    labels:
+      team: other

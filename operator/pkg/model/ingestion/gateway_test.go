@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
@@ -230,10 +231,14 @@ func readGatewayInput(t *testing.T, testName string) Input {
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-serviceimport.yaml"), &input.ServiceImports)
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-referencegrant.yaml"), &input.ReferenceGrants)
 
-	var mergedFixtures []MergedListenerFixture
-	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-mergedlisteners.yaml"), &mergedFixtures)
-	if len(mergedFixtures) > 0 {
-		input.MergedListeners = toMergedListeners(mergedFixtures)
+	var listenerSets []gatewayv1.ListenerSet
+	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-listenersets.yaml"), &listenerSets)
+
+	var namespaces []corev1.Namespace
+	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-namespaces.yaml"), &namespaces)
+
+	if len(listenerSets) > 0 {
+		input.MergedListeners = BuildMergedListeners(&input.Gateway, listenerSets, namespaceResolver(t, namespaces))
 	}
 
 	btlspMapFixture := &BackendTLSPolicyMapFixture{}

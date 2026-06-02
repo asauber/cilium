@@ -448,25 +448,8 @@ func (r *gatewayReconciler) updateListenerSetStatus(ctx context.Context, origina
 // * sets AttachedListenerSets on Gateway status
 // * returns both the merged listener list and a list of attached ListenerSets
 func (r *gatewayReconciler) resolveAllowedListeners(ctx context.Context, scopedLog *slog.Logger, gw *gatewayv1.Gateway) ([]ingestion.ListenerWithContext, []gatewayv1.ListenerSet) {
-	gwSource := model.FullyQualifiedResource{
-		Name:      gw.GetName(),
-		Namespace: gw.GetNamespace(),
-		Group:     gatewayv1.SchemeGroupVersion.Group,
-		Version:   gatewayv1.SchemeGroupVersion.Version,
-		Kind:      "Gateway",
-		UID:       string(gw.GetUID()),
-	}
-
-	var merged []ingestion.ListenerWithContext
-	for _, l := range gw.Spec.Listeners {
-		merged = append(merged, ingestion.ListenerWithContext{
-			Listener: l,
-			Source:   gwSource,
-		})
-	}
-
 	if !helpers.HasListenerSetSupport(r.Client.Scheme()) {
-		return merged, nil
+		return ingestion.BuildMergedListeners(gw, nil, nil), nil
 	}
 
 	lsList := &gatewayv1.ListenerSetList{}
@@ -474,7 +457,7 @@ func (r *gatewayReconciler) resolveAllowedListeners(ctx context.Context, scopedL
 		FieldSelector: fields.OneTermEqualSelector(indexers.ListenerSetGatewayIndex, client.ObjectKeyFromObject(gw).String()),
 	}); err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to list ListenerSets", logfields.Error, err)
-		return merged, nil
+		return ingestion.BuildMergedListeners(gw, nil, nil), nil
 	}
 
 	sortListenerSets(lsList.Items)
@@ -495,22 +478,16 @@ func (r *gatewayReconciler) resolveAllowedListeners(ctx context.Context, scopedL
 		}
 		attachedCount++
 		attachedSets = append(attachedSets, *ls)
-
-		lsSource := listenerSetFQR(ls)
-		for _, entry := range ls.Spec.Listeners {
-			listener := helpers.ListenerEntryToListener(entry)
-			merged = append(merged, ingestion.ListenerWithContext{
-				Listener:          listener,
-				Source:            lsSource,
-				AllowedNamespaces: resolveAllowedNamespaces(ctx, r.Client, ls.GetNamespace(), listener, scopedLog),
-			})
-		}
 	}
 
 	if attachedCount > 0 {
 		gw.Status.AttachedListenerSets = &attachedCount
 	}
-	return merged, attachedSets
+
+	resolveNS := func(listenerNamespace string, l gatewayv1.Listener) map[string]struct{} {
+		return resolveAllowedNamespaces(ctx, r.Client, listenerNamespace, l, scopedLog)
+	}
+	return ingestion.BuildMergedListeners(gw, attachedSets, resolveNS), attachedSets
 }
 
 // getGatewayClassConfig returns the CiliumGatewayClassConfig referenced by the GatewayClass.

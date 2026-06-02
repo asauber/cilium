@@ -1,0 +1,19 @@
+- metadata:
+    creationTimestamp: null
+    name: additional-listeners
+    namespace: app-ns
+    uid: listenerset-uid
+  spec:
+    parentRef:
+      name: listenerset-gateway
+      namespace: infra
+    listeners:
+      - name: listenerset-http
+        port: 8080
+        protocol: HTTP
+        allowedRoutes:
+          namespaces:
+            from: Selector
+            selector:
+              matchLabels:
+                team: app
