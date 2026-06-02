@@ -2,6 +2,7 @@ metadata:
   creationTimestamp: null
   name: listenerset-gateway
   namespace: default
+  uid: gw-uid
 spec:
   gatewayClassName: cilium
   listeners:

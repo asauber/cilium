@@ -41,6 +41,60 @@ type ListenerWithContext struct {
 	AllowedNamespaces map[string]struct{}
 }
 
+// AllowedNamespacesResolver returns the set of namespaces from which routes
+// may attach to the given listener, whose owning resource (Gateway or
+// ListenerSet) sits in listenerNamespace. A nil return means routes from all
+// namespaces are allowed.
+type AllowedNamespacesResolver func(listenerNamespace string, l gatewayv1.Listener) map[string]struct{}
+
+// BuildMergedListeners produces the merged listener list for a Gateway plus
+// any ListenerSets that have already been determined to be allowed by the
+// Gateway's allowedListeners policy. resolveAllowed, when non-nil, is invoked
+// per ListenerSet listener to compute AllowedNamespaces. Gateway-owned
+// listeners are emitted with AllowedNamespaces left nil; namespace policy for
+// those is enforced elsewhere by the gateway-api reconciler.
+func BuildMergedListeners(gw *gatewayv1.Gateway, allowedSets []gatewayv1.ListenerSet, resolveAllowed AllowedNamespacesResolver) []ListenerWithContext {
+	var merged []ListenerWithContext
+	gwSource := model.FullyQualifiedResource{
+		Name:      gw.GetName(),
+		Namespace: gw.GetNamespace(),
+		Group:     gatewayv1.SchemeGroupVersion.Group,
+		Version:   gatewayv1.SchemeGroupVersion.Version,
+		Kind:      "Gateway",
+		UID:       string(gw.GetUID()),
+	}
+	for _, l := range gw.Spec.Listeners {
+		merged = append(merged, ListenerWithContext{
+			Listener: l,
+			Source:   gwSource,
+		})
+	}
+	for i := range allowedSets {
+		ls := &allowedSets[i]
+		lsSource := model.FullyQualifiedResource{
+			Name:      ls.GetName(),
+			Namespace: ls.GetNamespace(),
+			Group:     gatewayv1.SchemeGroupVersion.Group,
+			Version:   gatewayv1.SchemeGroupVersion.Version,
+			Kind:      "ListenerSet",
+			UID:       string(ls.GetUID()),
+		}
+		for _, entry := range ls.Spec.Listeners {
+			listener := helpers.ListenerEntryToListener(entry)
+			var allowedNs map[string]struct{}
+			if resolveAllowed != nil {
+				allowedNs = resolveAllowed(ls.GetNamespace(), listener)
+			}
+			merged = append(merged, ListenerWithContext{
+				Listener:          listener,
+				Source:            lsSource,
+				AllowedNamespaces: allowedNs,
+			})
+		}
+	}
+	return merged
+}
+
 // Input is the input for GatewayAPI.
 type Input struct {
 	GatewayClass       gatewayv1.GatewayClass
