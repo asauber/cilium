@@ -254,6 +254,13 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		MergedListeners:     mergedListeners,
 	})
 
+	// TODO(ajs): At this point in the function the variable names are
+	// confusing.  We have "httpRoutes" which has been filtered based on
+	// attachedListenerSets We also have "httpRouteList.Items" which has not
+	// been filtered based on attachedListenerSets Apparently we are passing
+	// httpRouteList here because we want to set Status for those Routes which
+	// did not match a listener set but this seems strangely disconnected from
+	// the filter calls above.
 	validListener, err := r.setListenerStatus(ctx, gw, httpRouteList, tlsRouteList, grpcRouteList)
 	if err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to set listener status", logfields.Error, err)
@@ -262,7 +269,6 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return r.handleReconcileErrorWithStatus(ctx, err, original, gw)
 	}
 
-	// Set status on attached ListenerSets (per-listener conditions + top-level Accepted/Programmed)
 	r.setListenerSetStatuses(ctx, gw, attachedListenerSets, httpRouteList, tlsRouteList, grpcRouteList)
 	if !validListener {
 		err := fmt.Errorf("No Accepted Listeners for Gateway")
