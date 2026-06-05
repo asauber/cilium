@@ -100,29 +100,25 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return controllerruntime.Success()
 	}
 
-	// Build merged listener list from Gateway + attached ListenerSets.
-	// This must happen before route fetching so we know which ListenerSets to query.
-	mergedListeners, attachedListenerSets := r.resolveAllowedListeners(ctx, scopedLog, gw)
-
-	httpRouteList := &gatewayv1.HTTPRouteList{}
-	if err := r.Client.List(ctx, httpRouteList, &client.ListOptions{
+	allHTTPRoutes := &gatewayv1.HTTPRouteList{}
+	if err := r.Client.List(ctx, allHTTPRoutes, &client.ListOptions{
 		FieldSelector: fields.OneTermEqualSelector(indexers.GatewayHTTPRouteIndex, client.ObjectKeyFromObject(original).String()),
 	}); err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to list HTTPRoutes", logfields.Error, err)
 		return r.handleReconcileErrorWithStatus(ctx, err, original, gw)
 	}
 
-	grpcRouteList := &gatewayv1.GRPCRouteList{}
-	if err := r.Client.List(ctx, grpcRouteList, &client.ListOptions{
+	allGRPCRoutes := &gatewayv1.GRPCRouteList{}
+	if err := r.Client.List(ctx, allGRPCRoutes, &client.ListOptions{
 		FieldSelector: fields.OneTermEqualSelector(indexers.GatewayGRPCRouteIndex, client.ObjectKeyFromObject(original).String()),
 	}); err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to list GRPCRoutes", logfields.Error, err)
 		return r.handleReconcileErrorWithStatus(ctx, err, original, gw)
 	}
 
-	tlsRouteList := &gatewayv1.TLSRouteList{}
+	allTLSRoutes := &gatewayv1.TLSRouteList{}
 	if helpers.HasTLSRouteSupport(r.Client.Scheme()) {
-		if err := r.Client.List(ctx, tlsRouteList, &client.ListOptions{
+		if err := r.Client.List(ctx, allTLSRoutes, &client.ListOptions{
 			FieldSelector: fields.OneTermEqualSelector(indexers.GatewayTLSRouteIndex, client.ObjectKeyFromObject(original).String()),
 		}); err != nil {
 			scopedLog.ErrorContext(ctx, "Unable to list TLSRoutes", logfields.Error, err)
@@ -130,7 +126,11 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
-	// Also fetch Routes targeting attached ListenerSets
+	// Build merged listener list from Gateway + attached ListenerSets.
+	// This must happen before route fetching so we know which ListenerSets to query.
+	mergedListeners, attachedListenerSets := r.resolveAllowedListeners(ctx, scopedLog, gw)
+
+	// Add Routes targeting attached ListenerSets
 	if helpers.HasListenerSetSupport(r.Client.Scheme()) {
 		for _, ls := range attachedListenerSets {
 			lsKey := client.ObjectKeyFromObject(&ls).String()
@@ -143,7 +143,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 					logfields.Error, err,
 					logfields.Resource, lsKey)
 			} else {
-				httpRouteList.Items = append(httpRouteList.Items, lsHTTPRoutes.Items...)
+				allHTTPRoutes.Items = append(allHTTPRoutes.Items, lsHTTPRoutes.Items...)
 			}
 
 			lsGRPCRoutes := &gatewayv1.GRPCRouteList{}
@@ -154,7 +154,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 					logfields.Error, err,
 					logfields.Resource, lsKey)
 			} else {
-				grpcRouteList.Items = append(grpcRouteList.Items, lsGRPCRoutes.Items...)
+				allGRPCRoutes.Items = append(allGRPCRoutes.Items, lsGRPCRoutes.Items...)
 			}
 
 			if helpers.HasTLSRouteSupport(r.Client.Scheme()) {
@@ -166,15 +166,15 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 						logfields.Error, err,
 						logfields.Resource, lsKey)
 				} else {
-					tlsRouteList.Items = append(tlsRouteList.Items, lsTLSRoutes.Items...)
+					allTLSRoutes.Items = append(allTLSRoutes.Items, lsTLSRoutes.Items...)
 				}
 			}
 		}
 
 		// Deduplicate routes that may appear in both Gateway and ListenerSet indices
-		httpRouteList.Items = deduplicateHTTPRoutes(httpRouteList.Items)
-		grpcRouteList.Items = deduplicateGRPCRoutes(grpcRouteList.Items)
-		tlsRouteList.Items = deduplicateTLSRoutes(tlsRouteList.Items)
+		allHTTPRoutes.Items = deduplicateHTTPRoutes(allHTTPRoutes.Items)
+		allGRPCRoutes.Items = deduplicateGRPCRoutes(allGRPCRoutes.Items)
+		allTLSRoutes.Items = deduplicateTLSRoutes(allTLSRoutes.Items)
 	}
 
 	btlspList := &gatewayv1.BackendTLSPolicyList{}
@@ -211,30 +211,33 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// Run the HTTPRoute route checks here and update the status accordingly.
-	if err := r.setHTTPRouteStatuses(scopedLog, ctx, httpRouteList, grants); err != nil {
+	if err := r.setHTTPRouteStatuses(scopedLog, ctx, allHTTPRoutes, grants); err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to update HTTPRoute Status", logfields.Error, err)
 		return controllerruntime.Fail(err)
 	}
 
 	// Run the TLSRoute route checks here and update the status accordingly.
 	if helpers.HasTLSRouteSupport(r.Client.Scheme()) {
-		if err := r.setTLSRouteStatuses(scopedLog, ctx, tlsRouteList, grants); err != nil {
+		if err := r.setTLSRouteStatuses(scopedLog, ctx, allTLSRoutes, grants); err != nil {
 			scopedLog.ErrorContext(ctx, "Unable to update TLSRoute Status", logfields.Error, err)
 			return controllerruntime.Fail(err)
 		}
 	}
 
 	// Run the GRPCRoute route checks here and update the status accordingly.
-	if err := r.setGRPCRouteStatuses(scopedLog, ctx, grpcRouteList, grants); err != nil {
+	if err := r.setGRPCRouteStatuses(scopedLog, ctx, allGRPCRoutes, grants); err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to update GRPCRoute Status", logfields.Error, err)
 		return controllerruntime.Fail(err)
 	}
 
-	httpRoutes := r.filterHTTPRoutesByGateway(ctx, gw, attachedListenerSets, httpRouteList.Items)
-	tlsRoutes := r.filterTLSRoutesByGateway(ctx, gw, attachedListenerSets, tlsRouteList.Items)
-	grpcRoutes := r.filterGRPCRoutesByGateway(ctx, gw, attachedListenerSets, grpcRouteList.Items)
+	// attached Routes are the subset of all Routes that successfully attach to
+	// this Gateway (or one of its attached ListenerSets) per the Gateway-wide
+	// attachment checks
+	attachedHTTPRoutes := r.filterHTTPRoutesByGateway(ctx, gw, attachedListenerSets, allHTTPRoutes.Items)
+	attachedTLSRoutes := r.filterTLSRoutesByGateway(ctx, gw, attachedListenerSets, allTLSRoutes.Items)
+	attachedGRPCRoutes := r.filterGRPCRoutesByGateway(ctx, gw, attachedListenerSets, allGRPCRoutes.Items)
 
-	if err := r.setBackendTLSPolicyStatuses(scopedLog, ctx, httpRoutes, btlspMap, req.NamespacedName); err != nil {
+	if err := r.setBackendTLSPolicyStatuses(scopedLog, ctx, attachedHTTPRoutes, btlspMap, req.NamespacedName); err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to update BackendTLSPolicy Status", logfields.Error, err)
 		return controllerruntime.Fail(err)
 	}
@@ -244,9 +247,9 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		GatewayClass:        *gwc,
 		GatewayClassConfig:  gatewayClassConfig,
 		Gateway:             *gw,
-		HTTPRoutes:          httpRoutes,
-		TLSRoutes:           tlsRoutes,
-		GRPCRoutes:          grpcRoutes,
+		HTTPRoutes:          attachedHTTPRoutes,
+		TLSRoutes:           attachedTLSRoutes,
+		GRPCRoutes:          attachedGRPCRoutes,
 		Services:            servicesList.Items,
 		ServiceImports:      serviceImportsList.Items,
 		ReferenceGrants:     grants.Items,
@@ -254,14 +257,10 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		MergedListeners:     mergedListeners,
 	})
 
-	// TODO(ajs): At this point in the function the variable names are
-	// confusing.  We have "httpRoutes" which has been filtered based on
-	// attachedListenerSets We also have "httpRouteList.Items" which has not
-	// been filtered based on attachedListenerSets Apparently we are passing
-	// httpRouteList here because we want to set Status for those Routes which
-	// did not match a listener set but this seems strangely disconnected from
-	// the filter calls above.
-	validListener, err := r.setListenerStatus(ctx, gw, httpRouteList, tlsRouteList, grpcRouteList)
+	// setListenerStatus and setListenerSetStatuses re-run per-listener
+	// attachment from the full candidate set, so they receive all*Routes
+	// rather than the Gateway-filtered attached*Routes.
+	validListener, err := r.setListenerStatus(ctx, gw, allHTTPRoutes.Items, allTLSRoutes.Items, allGRPCRoutes.Items)
 	if err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to set listener status", logfields.Error, err)
 		setGatewayAccepted(gw, false, "Unable to set listener status", gatewayv1.GatewayReasonNoResources)
@@ -269,7 +268,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return r.handleReconcileErrorWithStatus(ctx, err, original, gw)
 	}
 
-	r.setListenerSetStatuses(ctx, gw, attachedListenerSets, httpRouteList, tlsRouteList, grpcRouteList)
+	r.setListenerSetStatuses(ctx, gw, attachedListenerSets, allHTTPRoutes.Items, allTLSRoutes.Items, allGRPCRoutes.Items)
 	if !validListener {
 		err := fmt.Errorf("No Accepted Listeners for Gateway")
 		scopedLog.ErrorContext(ctx, "No Accepted Listeners for Gateway", logfields.Error, err)
@@ -769,7 +768,7 @@ func (r *gatewayReconciler) validateListener(ctx context.Context, l gatewayv1.Li
 	return res
 }
 
-func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1.Gateway, httpRoutes *gatewayv1.HTTPRouteList, tlsRoutes *gatewayv1.TLSRouteList, grpcRoutes *gatewayv1.GRPCRouteList) (bool, error) {
+func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1.Gateway, allHTTPRoutes []gatewayv1.HTTPRoute, allTLSRoutes []gatewayv1.TLSRoute, allGRPCRoutes []gatewayv1.GRPCRoute) (bool, error) {
 	grants := &gatewayv1.ReferenceGrantList{}
 	if err := r.Client.List(ctx, grants); err != nil {
 		return false, fmt.Errorf("failed to retrieve reference grants: %w", err)
@@ -798,9 +797,10 @@ func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1
 				listenerProgrammedCondition(gw.GetGeneration(), false, "Address not ready yet"))
 		}
 		var attachedRoutes int32
-		attachedRoutes += int32(len(r.filterHTTPRoutesByListener(ctx, gw, &l, nil, httpRoutes.Items)))
-		attachedRoutes += int32(len(r.filterGRPCRoutesByListener(ctx, gw, &l, nil, grpcRoutes.Items)))
-		attachedRoutes += int32(len(r.filterTLSRoutesByListener(ctx, gw, &l, nil, tlsRoutes.Items)))
+		owner := &routechecks.GatewayListenerOwner{Gateway: gw}
+		attachedRoutes += int32(len(r.filterHTTPRoutesByListener(ctx, gw, owner, &l, allHTTPRoutes)))
+		attachedRoutes += int32(len(r.filterGRPCRoutesByListener(ctx, gw, owner, &l, allGRPCRoutes)))
+		attachedRoutes += int32(len(r.filterTLSRoutesByListener(ctx, gw, owner, &l, allTLSRoutes)))
 
 		found := false
 		for i := range gw.Status.Listeners {
@@ -1018,9 +1018,9 @@ func (r *gatewayReconciler) setListenerSetStatuses(
 	ctx context.Context,
 	gw *gatewayv1.Gateway,
 	attachedListenerSets []gatewayv1.ListenerSet,
-	httpRoutes *gatewayv1.HTTPRouteList,
-	tlsRoutes *gatewayv1.TLSRouteList,
-	grpcRoutes *gatewayv1.GRPCRouteList,
+	allHTTPRoutes []gatewayv1.HTTPRoute,
+	allTLSRoutes []gatewayv1.TLSRoute,
+	allGRPCRoutes []gatewayv1.GRPCRoute,
 ) {
 	grants := &gatewayv1.ReferenceGrantList{}
 	if err := r.Client.List(ctx, grants); err != nil {
@@ -1082,11 +1082,14 @@ func (r *gatewayReconciler) setListenerSetStatuses(
 			}
 
 			// Count attached routes for this listener
-			lsSource := listenerSetFQR(ls)
+			owner := &routechecks.ListenerSetListenerOwner{
+				Name:      ls.GetName(),
+				Namespace: ls.GetNamespace(),
+			}
 			var attachedRoutes int32
-			attachedRoutes += int32(len(r.filterHTTPRoutesByListener(ctx, gw, &l, &lsSource, httpRoutes.Items, *ls)))
-			attachedRoutes += int32(len(r.filterGRPCRoutesByListener(ctx, gw, &l, &lsSource, grpcRoutes.Items, *ls)))
-			attachedRoutes += int32(len(r.filterTLSRoutesByListener(ctx, gw, &l, &lsSource, tlsRoutes.Items, *ls)))
+			attachedRoutes += int32(len(r.filterHTTPRoutesByListener(ctx, gw, owner, &l, allHTTPRoutes, *ls)))
+			attachedRoutes += int32(len(r.filterGRPCRoutesByListener(ctx, gw, owner, &l, allGRPCRoutes, *ls)))
+			attachedRoutes += int32(len(r.filterTLSRoutesByListener(ctx, gw, owner, &l, allTLSRoutes, *ls)))
 
 			listenerStatuses = append(listenerStatuses, gatewayv1.ListenerEntryStatus{
 				Name:           entry.Name,
@@ -1257,8 +1260,9 @@ func (r *gatewayReconciler) runListenerSetRouteChecks(input routechecks.Input, p
 	lsInput := &listenerSetRouteInput{
 		Input: input,
 		owner: &routechecks.ListenerSetListenerOwner{
-			Listeners: listeners,
+			Name:      ls.GetName(),
 			Namespace: ls.GetNamespace(),
+			Listeners: listeners,
 		},
 	}
 

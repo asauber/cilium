@@ -19,11 +19,16 @@ const (
 	controllerName = "io.cilium/gateway-controller"
 )
 
-// ListenerOwner provides the listeners and namespace needed by route check
-// functions. Both Gateway and ListenerSet parentRefs resolve to a ListenerOwner.
+// ListenerOwner provides the identity and listeners needed by route check
+// and route filter functions. Both Gateway and ListenerSet parentRefs resolve
+// to a ListenerOwner.
 type ListenerOwner interface {
-	GetListeners() []gatewayv1.Listener
+	GetName() string
 	GetNamespace() string
+	GetListeners() []gatewayv1.Listener
+	// IsListenerSet reports whether this owner is a ListenerSet (true) or a
+	// Gateway (false). Used to discriminate parentRef kinds during matching.
+	IsListenerSet() bool
 }
 
 // GatewayListenerOwner wraps a Gateway to satisfy ListenerOwner.
@@ -35,18 +40,32 @@ func (g *GatewayListenerOwner) GetListeners() []gatewayv1.Listener {
 	return g.Spec.Listeners
 }
 
-// ListenerSetListenerOwner holds converted listeners and namespace for a ListenerSet.
+func (g *GatewayListenerOwner) IsListenerSet() bool {
+	return false
+}
+
+// ListenerSetListenerOwner holds the identity and converted listeners for a
+// ListenerSet.
 type ListenerSetListenerOwner struct {
-	Listeners []gatewayv1.Listener
+	Name      string
 	Namespace string
+	Listeners []gatewayv1.Listener
+}
+
+func (l *ListenerSetListenerOwner) GetName() string {
+	return l.Name
+}
+
+func (l *ListenerSetListenerOwner) GetNamespace() string {
+	return l.Namespace
 }
 
 func (l *ListenerSetListenerOwner) GetListeners() []gatewayv1.Listener {
 	return l.Listeners
 }
 
-func (l *ListenerSetListenerOwner) GetNamespace() string {
-	return l.Namespace
+func (l *ListenerSetListenerOwner) IsListenerSet() bool {
+	return true
 }
 
 type GenericRule interface {

@@ -14,19 +14,8 @@ import (
 
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
 	"github.com/cilium/cilium/operator/pkg/gateway-api/routechecks"
-	"github.com/cilium/cilium/operator/pkg/model"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 )
-
-// listenerOwnerNamespace returns the namespace of the listener's owner.
-// For ListenerSet listeners, this is the ListenerSet's namespace.
-// For Gateway listeners (listenerSource is nil or Kind is "Gateway"), this is the Gateway's namespace.
-func listenerOwnerNamespace(gw *gatewayv1.Gateway, listenerSource *model.FullyQualifiedResource) string {
-	if listenerSource != nil && listenerSource.Kind == "ListenerSet" {
-		return listenerSource.Namespace
-	}
-	return gw.GetNamespace()
-}
 
 // resolveAllowedNamespaces resolves a listener's allowedRoutes.namespaces policy
 // into a set of namespace names. Returns nil to indicate all namespaces are allowed.
@@ -79,70 +68,61 @@ func (r *gatewayReconciler) filterGRPCRoutesByGateway(ctx context.Context, gw *g
 	return filtered
 }
 
-func (r *gatewayReconciler) filterHTTPRoutesByListener(ctx context.Context, gw *gatewayv1.Gateway, listener *gatewayv1.Listener, listenerSource *model.FullyQualifiedResource, routes []gatewayv1.HTTPRoute, attachedListenerSets ...gatewayv1.ListenerSet) []gatewayv1.HTTPRoute {
-	lsNS := listenerOwnerNamespace(gw, listenerSource)
+func (r *gatewayReconciler) filterHTTPRoutesByListener(ctx context.Context, gw *gatewayv1.Gateway, owner routechecks.ListenerOwner, listener *gatewayv1.Listener, routes []gatewayv1.HTTPRoute, attachedListenerSets ...gatewayv1.ListenerSet) []gatewayv1.HTTPRoute {
+	ownerNS := owner.GetNamespace()
 	var filtered []gatewayv1.HTTPRoute
 	for _, route := range routes {
 		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, attachedListenerSets) &&
-			listenerisAllowed(ctx, r.Client, lsNS, listener, &route, r.logger) &&
+			listenerisAllowed(ctx, r.Client, ownerNS, listener, &route, r.logger) &&
 			len(computeHostsForListener(listener, route.Spec.Hostnames, nil)) > 0 &&
-			parentRefMatched(gw, listener, listenerSource, route.GetNamespace(), route.Spec.ParentRefs) {
+			parentRefMatched(owner, listener, route.GetNamespace(), route.Spec.ParentRefs) {
 			filtered = append(filtered, route)
 		}
 	}
 	return filtered
 }
 
-func (r *gatewayReconciler) filterGRPCRoutesByListener(ctx context.Context, gw *gatewayv1.Gateway, listener *gatewayv1.Listener, listenerSource *model.FullyQualifiedResource, routes []gatewayv1.GRPCRoute, attachedListenerSets ...gatewayv1.ListenerSet) []gatewayv1.GRPCRoute {
-	lsNS := listenerOwnerNamespace(gw, listenerSource)
+func (r *gatewayReconciler) filterGRPCRoutesByListener(ctx context.Context, gw *gatewayv1.Gateway, owner routechecks.ListenerOwner, listener *gatewayv1.Listener, routes []gatewayv1.GRPCRoute, attachedListenerSets ...gatewayv1.ListenerSet) []gatewayv1.GRPCRoute {
+	ownerNS := owner.GetNamespace()
 	var filtered []gatewayv1.GRPCRoute
 	for _, route := range routes {
 		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, attachedListenerSets) &&
-			listenerisAllowed(ctx, r.Client, lsNS, listener, &route, r.logger) &&
+			listenerisAllowed(ctx, r.Client, ownerNS, listener, &route, r.logger) &&
 			len(computeHostsForListener(listener, route.Spec.Hostnames, nil)) > 0 &&
-			parentRefMatched(gw, listener, listenerSource, route.GetNamespace(), route.Spec.ParentRefs) {
+			parentRefMatched(owner, listener, route.GetNamespace(), route.Spec.ParentRefs) {
 			filtered = append(filtered, route)
 		}
 	}
 	return filtered
 }
 
-func parentRefMatched(gw *gatewayv1.Gateway, listener *gatewayv1.Listener, listenerSource *model.FullyQualifiedResource, routeNamespace string, refs []gatewayv1.ParentReference) bool {
+func parentRefMatched(owner routechecks.ListenerOwner, listener *gatewayv1.Listener, routeNamespace string, refs []gatewayv1.ParentReference) bool {
 	for _, ref := range refs {
 		if helpers.IsGateway(ref) {
-			// Only match if this listener belongs to the Gateway
-			if listenerSource != nil && listenerSource.Kind != "Gateway" {
+			// Only match if this listener belongs to a Gateway owner
+			if owner.IsListenerSet() {
 				continue
 			}
-			if string(ref.Name) == gw.GetName() && gw.GetNamespace() == helpers.NamespaceDerefOr(ref.Namespace, routeNamespace) {
-				if ref.SectionName == nil && ref.Port == nil {
-					return true
-				}
-				sectionNameCheck := ref.SectionName == nil || *ref.SectionName == listener.Name
-				portCheck := ref.Port == nil || *ref.Port == listener.Port
-				if sectionNameCheck && portCheck {
-					return true
-				}
+		} else if helpers.IsListenerSet(ref) {
+			// Only match if this listener belongs to a ListenerSet owner
+			if !owner.IsListenerSet() {
+				continue
 			}
+		} else {
 			continue
 		}
 
-		if helpers.IsListenerSet(ref) {
-			// Only match if this listener belongs to the referenced ListenerSet
-			if listenerSource == nil || listenerSource.Kind != "ListenerSet" {
-				continue
-			}
-			if string(ref.Name) == listenerSource.Name &&
-				helpers.NamespaceDerefOr(ref.Namespace, routeNamespace) == listenerSource.Namespace {
-				if ref.SectionName == nil && ref.Port == nil {
-					return true
-				}
-				sectionNameCheck := ref.SectionName == nil || *ref.SectionName == listener.Name
-				portCheck := ref.Port == nil || *ref.Port == listener.Port
-				if sectionNameCheck && portCheck {
-					return true
-				}
-			}
+		if string(ref.Name) != owner.GetName() ||
+			owner.GetNamespace() != helpers.NamespaceDerefOr(ref.Namespace, routeNamespace) {
+			continue
+		}
+		if ref.SectionName == nil && ref.Port == nil {
+			return true
+		}
+		sectionNameCheck := ref.SectionName == nil || *ref.SectionName == listener.Name
+		portCheck := ref.Port == nil || *ref.Port == listener.Port
+		if sectionNameCheck && portCheck {
+			return true
 		}
 	}
 	return false
@@ -159,14 +139,14 @@ func (r *gatewayReconciler) filterTLSRoutesByGateway(ctx context.Context, gw *ga
 	return filtered
 }
 
-func (r *gatewayReconciler) filterTLSRoutesByListener(ctx context.Context, gw *gatewayv1.Gateway, listener *gatewayv1.Listener, listenerSource *model.FullyQualifiedResource, routes []gatewayv1.TLSRoute, attachedListenerSets ...gatewayv1.ListenerSet) []gatewayv1.TLSRoute {
-	lsNS := listenerOwnerNamespace(gw, listenerSource)
+func (r *gatewayReconciler) filterTLSRoutesByListener(ctx context.Context, gw *gatewayv1.Gateway, owner routechecks.ListenerOwner, listener *gatewayv1.Listener, routes []gatewayv1.TLSRoute, attachedListenerSets ...gatewayv1.ListenerSet) []gatewayv1.TLSRoute {
+	ownerNS := owner.GetNamespace()
 	var filtered []gatewayv1.TLSRoute
 	for _, route := range routes {
 		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, attachedListenerSets) &&
-			listenerisAllowed(ctx, r.Client, lsNS, listener, &route, r.logger) &&
+			listenerisAllowed(ctx, r.Client, ownerNS, listener, &route, r.logger) &&
 			len(computeHostsForListener(listener, route.Spec.Hostnames, nil)) > 0 &&
-			parentRefMatched(gw, listener, listenerSource, route.GetNamespace(), route.Spec.ParentRefs) {
+			parentRefMatched(owner, listener, route.GetNamespace(), route.Spec.ParentRefs) {
 			filtered = append(filtered, route)
 		}
 	}
