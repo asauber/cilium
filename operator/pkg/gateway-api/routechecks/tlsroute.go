@@ -28,7 +28,7 @@ type TLSRouteInput struct {
 	Grants   *gatewayv1.ReferenceGrantList
 	TLSRoute *gatewayv1.TLSRoute
 
-	gateways map[gatewayv1.ParentReference]ListenerOwner
+	gateways map[gatewayv1.ParentReference]ListenerSource
 }
 
 func (t *TLSRouteInput) SetParentCondition(ref gatewayv1.ParentReference, condition metav1.Condition) {
@@ -113,13 +113,13 @@ func (t *TLSRouteInput) GetHostnames() []gatewayv1.Hostname {
 	return t.TLSRoute.Spec.Hostnames
 }
 
-func (t *TLSRouteInput) GetListenerOwner(parent gatewayv1.ParentReference) (ListenerOwner, error) {
+func (t *TLSRouteInput) GetListenerSource(parent gatewayv1.ParentReference) (ListenerSource, error) {
 	if t.gateways == nil {
-		t.gateways = make(map[gatewayv1.ParentReference]ListenerOwner)
+		t.gateways = make(map[gatewayv1.ParentReference]ListenerSource)
 	}
 
-	if owner, exists := t.gateways[parent]; exists {
-		return owner, nil
+	if source, exists := t.gateways[parent]; exists {
+		return source, nil
 	}
 
 	ns := helpers.NamespaceDerefOr(parent.Namespace, t.GetNamespace())
@@ -135,10 +135,10 @@ func (t *TLSRouteInput) GetListenerOwner(parent gatewayv1.ParentReference) (List
 		return nil, fmt.Errorf("gateway %q does not exist: %w", parent.Name, err)
 	}
 
-	owner := &GatewayListenerOwner{Gateway: gw}
-	t.gateways[parent] = owner
+	source := &GatewayListenerSource{Gateway: gw}
+	t.gateways[parent] = source
 
-	return owner, nil
+	return source, nil
 }
 
 func (t *TLSRouteInput) GetParentGammaService(parent gatewayv1.ParentReference) (*corev1.Service, error) {

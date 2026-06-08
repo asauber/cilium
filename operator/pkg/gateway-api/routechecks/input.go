@@ -19,52 +19,53 @@ const (
 	controllerName = "io.cilium/gateway-controller"
 )
 
-// ListenerOwner provides the identity and listeners needed by route check
-// and route filter functions. Both Gateway and ListenerSet parentRefs resolve
-// to a ListenerOwner.
-type ListenerOwner interface {
+// ListenerSource provides the identity and listeners needed by route check
+// and route filter functions. The Gateway or ListenerSet referenced by a
+// parentRef resolves to a ListenerSource: it is the resource in which the
+// targeted listeners are defined.
+type ListenerSource interface {
 	GetName() string
 	GetNamespace() string
 	GetListeners() []gatewayv1.Listener
-	// IsListenerSet reports whether this owner is a ListenerSet (true) or a
+	// IsListenerSet reports whether this source is a ListenerSet (true) or a
 	// Gateway (false). Used to discriminate parentRef kinds during matching.
 	IsListenerSet() bool
 }
 
-// GatewayListenerOwner wraps a Gateway to satisfy ListenerOwner.
-type GatewayListenerOwner struct {
+// GatewayListenerSource wraps a Gateway to satisfy ListenerSource.
+type GatewayListenerSource struct {
 	*gatewayv1.Gateway
 }
 
-func (g *GatewayListenerOwner) GetListeners() []gatewayv1.Listener {
+func (g *GatewayListenerSource) GetListeners() []gatewayv1.Listener {
 	return g.Spec.Listeners
 }
 
-func (g *GatewayListenerOwner) IsListenerSet() bool {
+func (g *GatewayListenerSource) IsListenerSet() bool {
 	return false
 }
 
-// ListenerSetListenerOwner holds the identity and converted listeners for a
+// ListenerSetListenerSource holds the identity and converted listeners for a
 // ListenerSet.
-type ListenerSetListenerOwner struct {
+type ListenerSetListenerSource struct {
 	Name      string
 	Namespace string
 	Listeners []gatewayv1.Listener
 }
 
-func (l *ListenerSetListenerOwner) GetName() string {
+func (l *ListenerSetListenerSource) GetName() string {
 	return l.Name
 }
 
-func (l *ListenerSetListenerOwner) GetNamespace() string {
+func (l *ListenerSetListenerSource) GetNamespace() string {
 	return l.Namespace
 }
 
-func (l *ListenerSetListenerOwner) GetListeners() []gatewayv1.Listener {
+func (l *ListenerSetListenerSource) GetListeners() []gatewayv1.Listener {
 	return l.Listeners
 }
 
-func (l *ListenerSetListenerOwner) IsListenerSet() bool {
+func (l *ListenerSetListenerSource) IsListenerSet() bool {
 	return true
 }
 
@@ -79,7 +80,7 @@ type Input interface {
 	GetContext() context.Context
 	GetGVK() schema.GroupVersionKind
 	GetGrants() []gatewayv1.ReferenceGrant
-	GetListenerOwner(parent gatewayv1.ParentReference) (ListenerOwner, error)
+	GetListenerSource(parent gatewayv1.ParentReference) (ListenerSource, error)
 	GetParentGammaService(parent gatewayv1.ParentReference) (*corev1.Service, error)
 	GetHostnames() []gatewayv1.Hostname
 	GetValidProtocols() []gatewayv1.ProtocolType

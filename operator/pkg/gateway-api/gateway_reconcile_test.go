@@ -827,8 +827,8 @@ func Test_sectionNameMatched(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			owner := &routechecks.GatewayListenerOwner{Gateway: gw}
-			assert.Equalf(t, tt.want, parentRefMatched(owner, tt.args.listener, "default", tt.args.refs), "parentRefMatched(%v, %v, %v, %v)", gw, tt.args.listener, tt.args.routeNamespace, tt.args.refs)
+			source := &routechecks.GatewayListenerSource{Gateway: gw}
+			assert.Equalf(t, tt.want, parentRefMatched(source, tt.args.listener, "default", tt.args.refs), "parentRefMatched(%v, %v, %v, %v)", gw, tt.args.listener, tt.args.routeNamespace, tt.args.refs)
 		})
 	}
 }

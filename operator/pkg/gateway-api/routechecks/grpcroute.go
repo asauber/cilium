@@ -31,7 +31,7 @@ type GRPCRouteInput struct {
 	Grants    *gatewayv1.ReferenceGrantList
 	GRPCRoute *gatewayv1.GRPCRoute
 
-	gateways      map[gatewayv1.ParentReference]ListenerOwner
+	gateways      map[gatewayv1.ParentReference]ListenerSource
 	gammaServices map[gatewayv1.ParentReference]*corev1.Service
 }
 
@@ -88,13 +88,13 @@ func (g *GRPCRouteInput) GetGrants() []gatewayv1.ReferenceGrant {
 	return g.Grants.Items
 }
 
-func (g *GRPCRouteInput) GetListenerOwner(parent gatewayv1.ParentReference) (ListenerOwner, error) {
+func (g *GRPCRouteInput) GetListenerSource(parent gatewayv1.ParentReference) (ListenerSource, error) {
 	if g.gateways == nil {
-		g.gateways = make(map[gatewayv1.ParentReference]ListenerOwner)
+		g.gateways = make(map[gatewayv1.ParentReference]ListenerSource)
 	}
 
-	if owner, exists := g.gateways[parent]; exists {
-		return owner, nil
+	if source, exists := g.gateways[parent]; exists {
+		return source, nil
 	}
 
 	ns := helpers.NamespaceDerefOr(parent.Namespace, g.GetNamespace())
@@ -110,9 +110,9 @@ func (g *GRPCRouteInput) GetListenerOwner(parent gatewayv1.ParentReference) (Lis
 		return nil, fmt.Errorf("gateway %q does not exist: %w", parent.Name, err)
 	}
 
-	owner := &GatewayListenerOwner{Gateway: gw}
-	g.gateways[parent] = owner
-	return owner, nil
+	source := &GatewayListenerSource{Gateway: gw}
+	g.gateways[parent] = source
+	return source, nil
 }
 
 func (g *GRPCRouteInput) GetParentGammaService(parent gatewayv1.ParentReference) (*corev1.Service, error) {
