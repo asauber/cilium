@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
@@ -120,6 +121,118 @@ func TestGRPCGatewayAPI(t *testing.T) {
 			assert.Equal(t, toYaml(t, expected), toYaml(t, listeners), "Listeners did not match")
 		})
 	}
+}
+
+// TestBuildListenersWithRoutes_PerListenerNamespacePolicy is a regression test
+// for a pre-refactor bug in which per-listener namespace policy was not
+// enforced for Gateway-sourced listeners on the translation path. Before the
+// refactor that moved per-listener attachment into BuildListenersWithRoutes,
+// the reconciler's filter*RoutesByGateway pre-filter only checked whether a
+// route was admitted by *some* listener on the Gateway; the per-listener
+// translation loop in ingestion then attached the route to *every* listener
+// matching the parentRef, ignoring each listener's allowedRoutes.namespaces
+// policy. Consequently a route in a namespace admitted by only one listener
+// would translate onto both, producing (for example) duplicate weighted
+// clusters in the generated CiliumEnvoyConfig.
+//
+// This test constructs a Gateway with two listeners whose namespace policies
+// admit disjoint sets of namespaces and asserts that a single cross-namespace
+// route attaches to only the admitting listener.
+func TestBuildListenersWithRoutes_PerListenerNamespacePolicy(t *testing.T) {
+	const (
+		gwNS         = "infra"
+		routeNS      = "web"
+		permissiveLN = "permissive"
+		sameOnlyLN   = "same-only"
+	)
+
+	gw := &gatewayv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{Name: "gw", Namespace: gwNS},
+		Spec: gatewayv1.GatewaySpec{
+			Listeners: []gatewayv1.Listener{
+				{
+					Name:     permissiveLN,
+					Port:     80,
+					Protocol: gatewayv1.HTTPProtocolType,
+					AllowedRoutes: &gatewayv1.AllowedRoutes{
+						Namespaces: &gatewayv1.RouteNamespaces{
+							From: ptr.To(gatewayv1.NamespacesFromAll),
+						},
+					},
+				},
+				{
+					Name:     sameOnlyLN,
+					Port:     8080,
+					Protocol: gatewayv1.HTTPProtocolType,
+					AllowedRoutes: &gatewayv1.AllowedRoutes{
+						Namespaces: &gatewayv1.RouteNamespaces{
+							From: ptr.To(gatewayv1.NamespacesFromSame),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	parentRef := gatewayv1.ParentReference{
+		Group:     ptr.To(gatewayv1.Group(gatewayv1.GroupName)),
+		Kind:      ptr.To(gatewayv1.Kind("Gateway")),
+		Name:      "gw",
+		Namespace: ptr.To(gatewayv1.Namespace(gwNS)),
+		// Note: no SectionName / Port. Without per-listener namespace
+		// enforcement, the route would attach to BOTH listeners.
+	}
+	route := gatewayv1.HTTPRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "r", Namespace: routeNS},
+		Spec: gatewayv1.HTTPRouteSpec{
+			CommonRouteSpec: gatewayv1.CommonRouteSpec{
+				ParentRefs: []gatewayv1.ParentReference{parentRef},
+			},
+		},
+		Status: gatewayv1.HTTPRouteStatus{
+			RouteStatus: gatewayv1.RouteStatus{
+				Parents: []gatewayv1.RouteParentStatus{{
+					ParentRef:      parentRef,
+					ControllerName: "io.cilium/gateway-controller",
+					Conditions: []metav1.Condition{{
+						Type:   string(gatewayv1.RouteConditionAccepted),
+						Status: metav1.ConditionTrue,
+						Reason: string(gatewayv1.RouteReasonAccepted),
+					}},
+				}},
+			},
+		},
+	}
+
+	// Resolver implements Same/All faithfully; no selector evaluation needed
+	// for this case.
+	resolve := func(listenerNamespace string, l gatewayv1.Listener) map[string]struct{} {
+		if l.AllowedRoutes == nil || l.AllowedRoutes.Namespaces == nil || l.AllowedRoutes.Namespaces.From == nil {
+			return map[string]struct{}{listenerNamespace: {}}
+		}
+		switch *l.AllowedRoutes.Namespaces.From {
+		case gatewayv1.NamespacesFromAll:
+			return nil
+		case gatewayv1.NamespacesFromSame:
+			return map[string]struct{}{listenerNamespace: {}}
+		}
+		return map[string]struct{}{listenerNamespace: {}}
+	}
+
+	got := BuildListenersWithRoutes(gw, nil, []gatewayv1.HTTPRoute{route}, nil, nil, resolve)
+
+	assert.Len(t, got, 2, "expected one entry per Gateway listener")
+
+	permissive := got[0]
+	sameOnly := got[1]
+	assert.Equal(t, gatewayv1.SectionName(permissiveLN), permissive.Listener.Name)
+	assert.Equal(t, gatewayv1.SectionName(sameOnlyLN), sameOnly.Listener.Name)
+
+	assert.Len(t, permissive.HTTPRoutes, 1,
+		"permissive listener (from: All) must attach the cross-namespace route")
+	assert.Len(t, sameOnly.HTTPRoutes, 0,
+		"same-only listener (from: Same) must NOT attach the cross-namespace route; "+
+			"this is the case that regressed pre-refactor")
 }
 
 func TestGPRCPathMatch(t *testing.T) {
