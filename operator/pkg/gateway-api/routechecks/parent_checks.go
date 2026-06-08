@@ -13,7 +13,7 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-func CheckGatewayAllowedForNamespace(input Input, parentRef gatewayv1.ParentReference) (bool, error) {
+func CheckParentAllowedForNamespace(input Input, parentRef gatewayv1.ParentReference) (bool, error) {
 	source, err := input.GetListenerSource(parentRef)
 	if err != nil {
 		input.SetParentCondition(parentRef, metav1.Condition{
@@ -78,7 +78,7 @@ func CheckGatewayAllowedForNamespace(input Input, parentRef gatewayv1.ParentRefe
 	return false, nil
 }
 
-func CheckGatewayRouteKindAllowed(input Input, parentRef gatewayv1.ParentReference) (bool, error) {
+func CheckParentRouteKindAllowed(input Input, parentRef gatewayv1.ParentReference) (bool, error) {
 	source, err := input.GetListenerSource(parentRef)
 	if err != nil {
 		input.SetParentCondition(parentRef, metav1.Condition{
@@ -128,7 +128,7 @@ func CheckGatewayRouteKindAllowed(input Input, parentRef gatewayv1.ParentReferen
 	return true, nil
 }
 
-func CheckGatewayMatchingHostnames(input Input, parentRef gatewayv1.ParentReference) (bool, error) {
+func CheckParentMatchingHostnames(input Input, parentRef gatewayv1.ParentReference) (bool, error) {
 	source, err := input.GetListenerSource(parentRef)
 	if err != nil {
 		input.SetParentCondition(parentRef, metav1.Condition{
@@ -156,7 +156,7 @@ func CheckGatewayMatchingHostnames(input Input, parentRef gatewayv1.ParentRefere
 	return true, nil
 }
 
-func CheckGatewayMatchingPorts(input Input, parentRef gatewayv1.ParentReference) (bool, error) {
+func CheckParentMatchingPorts(input Input, parentRef gatewayv1.ParentReference) (bool, error) {
 	source, err := input.GetListenerSource(parentRef)
 	if err != nil {
 		input.SetParentCondition(parentRef, metav1.Condition{
@@ -188,7 +188,7 @@ func CheckGatewayMatchingPorts(input Input, parentRef gatewayv1.ParentReference)
 	return true, nil
 }
 
-func CheckGatewayMatchingSection(input Input, parentRef gatewayv1.ParentReference) (bool, error) {
+func CheckParentMatchingSection(input Input, parentRef gatewayv1.ParentReference) (bool, error) {
 	source, err := input.GetListenerSource(parentRef)
 	if err != nil {
 		input.SetParentCondition(parentRef, metav1.Condition{
@@ -234,7 +234,7 @@ func GetAllListenerHostNames(listeners []gatewayv1.Listener) []gatewayv1.Hostnam
 	return hosts
 }
 
-func CheckGatewayMatchingProtocol(input Input, parentRef gatewayv1.ParentReference) (bool, error) {
+func CheckParentMatchingProtocol(input Input, parentRef gatewayv1.ParentReference) (bool, error) {
 	source, err := input.GetListenerSource(parentRef)
 	if err != nil {
 		input.SetParentCondition(parentRef, metav1.Condition{
