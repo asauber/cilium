@@ -170,9 +170,9 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 
 		// Deduplicate routes that may appear in both Gateway and ListenerSet indices
-		allHTTPRoutes.Items = deduplicateHTTPRoutes(allHTTPRoutes.Items)
-		allGRPCRoutes.Items = deduplicateGRPCRoutes(allGRPCRoutes.Items)
-		allTLSRoutes.Items = deduplicateTLSRoutes(allTLSRoutes.Items)
+		allHTTPRoutes.Items = dedupeByNamespacedName(allHTTPRoutes.Items)
+		allGRPCRoutes.Items = dedupeByNamespacedName(allGRPCRoutes.Items)
+		allTLSRoutes.Items = dedupeByNamespacedName(allTLSRoutes.Items)
 	}
 
 	btlspList := &gatewayv1.BackendTLSPolicyList{}
@@ -464,20 +464,11 @@ func countAttachedRoutes(listenersWithRoutes []ingestion.ListenerWithRoutes, sou
 // namespace/name. The slice underlying the returned values is shared with the
 // input listeners; callers must not mutate route entries.
 func uniqueAttachedHTTPRoutes(listenersWithRoutes []ingestion.ListenerWithRoutes) []gatewayv1.HTTPRoute {
-	seen := map[types.NamespacedName]struct{}{}
-	var out []gatewayv1.HTTPRoute
+	var all []gatewayv1.HTTPRoute
 	for i := range listenersWithRoutes {
-		for j := range listenersWithRoutes[i].HTTPRoutes {
-			r := listenersWithRoutes[i].HTTPRoutes[j]
-			key := types.NamespacedName{Namespace: r.GetNamespace(), Name: r.GetName()}
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			out = append(out, r)
-		}
+		all = append(all, listenersWithRoutes[i].HTTPRoutes...)
 	}
-	return out
+	return dedupeByNamespacedName(all)
 }
 
 func (r *gatewayReconciler) updateListenerSetStatus(ctx context.Context, original *gatewayv1.ListenerSet, new *gatewayv1.ListenerSet) error {
