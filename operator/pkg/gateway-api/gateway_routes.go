@@ -15,6 +15,8 @@ import (
 	"github.com/cilium/cilium/pkg/logging/logfields"
 )
 
+// TODO: move this into a helpers/listener.go file
+
 // resolveAllowedNamespaces resolves a listener's allowedRoutes.namespaces policy
 // into a set of namespace names. Returns nil to indicate all namespaces are allowed.
 func resolveAllowedNamespaces(

@@ -98,7 +98,7 @@ func isAllowed(ctx context.Context, c client.Client, gw *gatewayv1.Gateway, rout
 }
 
 // listenerisAllowed is a single listener check to see if a route and listerner are valid.
-// listenerNamespace is the namespace of the listener's owner (Gateway or ListenerSet).
+// listenerNamespace is the namespace of the listener's source (Gateway or ListenerSet).
 func listenerisAllowed(ctx context.Context, c client.Client, listenerNamespace string, listener *gatewayv1.Listener, route metav1.Object, logger *slog.Logger) bool {
 	// all routes in the same namespace are allowed for this listener
 	if listener.AllowedRoutes == nil || listener.AllowedRoutes.Namespaces == nil {

@@ -115,31 +115,61 @@ type Input struct {
 	MergedListeners []ListenerWithContext
 }
 
-// parentRefMatchesSource checks whether a route's parentRef targets the same
-// resource as the listener's source. A Gateway parentRef matches Gateway-sourced
-// listeners, and a ListenerSet parentRef matches only the specific ListenerSet.
-func parentRefMatchesSource(parent gatewayv1.ParentReference, source model.FullyQualifiedResource, routeNamespace string) bool {
-	parentKind := "Gateway"
-	if parent.Kind != nil {
-		parentKind = string(*parent.Kind)
-	}
-	if parentKind != source.Kind {
+// ListenerMatchesParentRef reports whether parent targets a specific listener
+// defined in the source identified by sourceKind/sourceName/sourceNamespace
+// ("source" = the Gateway or ListenerSet in which the listener is defined; not
+// to be confused with the route's parentRef). A match requires that:
+//   - parent's resolved Kind+Group identifies the source kind ("Gateway" or
+//     "ListenerSet")
+//   - parent.Name equals sourceName
+//   - parent.Namespace (defaulting to routeNamespace when unset) equals
+//     sourceNamespace
+//   - parent.SectionName is unset OR equals listenerName
+//   - parent.Port is unset OR equals listenerPort
+//
+// This is the canonical per-listener attachment predicate. Callers in both the
+// ingestion path and the reconciler use it so the two stay consistent.
+func ListenerMatchesParentRef(
+	parent gatewayv1.ParentReference,
+	sourceKind, sourceName, sourceNamespace string,
+	listenerName gatewayv1.SectionName,
+	listenerPort gatewayv1.PortNumber,
+	routeNamespace string,
+) bool {
+	switch sourceKind {
+	case "Gateway":
+		if !helpers.IsGateway(parent) {
+			return false
+		}
+	case "ListenerSet":
+		if !helpers.IsListenerSet(parent) {
+			return false
+		}
+	default:
 		return false
 	}
-	if string(parent.Name) != source.Name {
+	if string(parent.Name) != sourceName {
 		return false
 	}
 	parentNS := routeNamespace
 	if parent.Namespace != nil {
 		parentNS = string(*parent.Namespace)
 	}
-	return parentNS == source.Namespace
+	if parentNS != sourceNamespace {
+		return false
+	}
+	if parent.SectionName != nil && *parent.SectionName != listenerName {
+		return false
+	}
+	if parent.Port != nil && *parent.Port != listenerPort {
+		return false
+	}
+	return true
 }
 
 // routeAllowed checks whether a route is allowed to attach to this listener
 // based on its parentRef matching the listener's source (Gateway or
-// ListenerSet) and namespace policy. If a parentRef specifies a sectionName, it
-// only matches the listener with that exact name.
+// ListenerSet), the listener's SectionName/Port, and namespace policy.
 func (l *ListenerWithContext) routeAllowed(parentRefs []gatewayv1.ParentReference, routeNamespace string) bool {
 	if l.AllowedNamespaces != nil {
 		if _, ok := l.AllowedNamespaces[routeNamespace]; !ok {
@@ -147,11 +177,8 @@ func (l *ListenerWithContext) routeAllowed(parentRefs []gatewayv1.ParentReferenc
 		}
 	}
 	for _, parent := range parentRefs {
-		if parentRefMatchesSource(parent, l.Source, routeNamespace) {
-			if parent.SectionName != nil && string(*parent.SectionName) != string(l.Listener.Name) {
-				// We didn't find a listener yet that matches the section name
-				continue
-			}
+		if ListenerMatchesParentRef(parent, l.Source.Kind, l.Source.Name, l.Source.Namespace,
+			l.Listener.Name, l.Listener.Port, routeNamespace) {
 			return true
 		}
 	}
@@ -328,52 +355,11 @@ func toHTTPRoutes(log *slog.Logger,
 	grants []gatewayv1.ReferenceGrant,
 	btlspMap helpers.BackendTLSPolicyServiceMap,
 ) []model.HTTPRoute {
+	// Per-listener parent attachment was already enforced by
+	// ListenerWithContext.FilterHTTPRoutes (via routeAllowed) before reaching
+	// here, so input only contains routes that attach to this listener.
 	var httpRoutes []model.HTTPRoute
 	for _, r := range input {
-		listenerIsParent := false
-		// Check parents to see if r can attach to them.
-		// We have to consider _both_ SectionName and Port
-		for _, parent := range r.Spec.ParentRefs {
-			// First, if both SectionName and Port are unset, attach
-			if parent.SectionName == nil && parent.Port == nil {
-				listenerIsParent = true
-				break
-			}
-
-			// Then, if SectionName is set, check combinations with Port.
-			if parent.SectionName != nil {
-				if *parent.SectionName != listener.Name {
-					// If SectionName is set but not equal, no other settings
-					// matter, so check the next parent.
-					continue
-				}
-
-				if parent.Port != nil && *parent.Port != listener.Port {
-					// If SectionName is set and equal, but Port is set and _unequal_,
-					continue
-				}
-
-				listenerIsParent = true
-				break
-			}
-
-			if parent.Port != nil {
-				if *parent.Port != listener.Port {
-					// If Port is set but not equal, no other settings
-					// matter, check the next parent.
-					continue
-				}
-
-				listenerIsParent = true
-				break
-			}
-
-		}
-
-		if !listenerIsParent {
-			continue
-		}
-
 		allProtocolHostnames := listenerHostnamesByProtocol[listener.Protocol]
 
 		computedHost := model.ComputeHosts(toStringSlice(r.Spec.Hostnames), (*string)(listener.Hostname), allProtocolHostnames)
@@ -714,19 +700,11 @@ func toGRPCRoutes(listener gatewayv1beta1.Listener,
 	serviceImports []mcsapiv1beta1.ServiceImport,
 	grants []gatewayv1.ReferenceGrant,
 ) []model.HTTPRoute {
+	// Per-listener parent attachment was already enforced by
+	// ListenerWithContext.FilterGRPCRoutes (via routeAllowed) before reaching
+	// here, so input only contains routes that attach to this listener.
 	var grpcRoutes []model.HTTPRoute
 	for _, r := range input {
-		isListener := false
-		for _, parent := range r.Spec.ParentRefs {
-			if parent.SectionName == nil || *parent.SectionName == listener.Name {
-				isListener = true
-				break
-			}
-		}
-		if !isListener {
-			continue
-		}
-
 		allProtocolHostnames := listenerHostnamesByProtocol[listener.Protocol]
 
 		computedHost := model.ComputeHosts(toStringSlice(r.Spec.Hostnames), (*string)(listener.Hostname), allProtocolHostnames)
@@ -836,19 +814,11 @@ func extractGRPCRoutes(hostnames []string, grpcr gatewayv1.GRPCRoute, services [
 }
 
 func toTLSRoutes(listener gatewayv1beta1.Listener, listenerHostnamesByProtocol map[gatewayv1.ProtocolType][]string, input []gatewayv1.TLSRoute, services []corev1.Service, serviceImports []mcsapiv1beta1.ServiceImport, grants []gatewayv1.ReferenceGrant) []model.TLSPassthroughRoute {
+	// Per-listener parent attachment was already enforced by
+	// ListenerWithContext.FilterTLSRoutes (via routeAllowed) before reaching
+	// here, so input only contains routes that attach to this listener.
 	var tlsRoutes []model.TLSPassthroughRoute
 	for _, r := range input {
-		isListener := false
-		for _, parent := range r.Spec.ParentRefs {
-			if parent.SectionName == nil || *parent.SectionName == listener.Name {
-				isListener = true
-				break
-			}
-		}
-		if !isListener {
-			continue
-		}
-
 		allProtocolHostnames := listenerHostnamesByProtocol[listener.Protocol]
 		computedHost := model.ComputeHosts(toStringSlice(r.Spec.Hostnames), (*string)(listener.Hostname), allProtocolHostnames)
 		// No matching host, skip this route
@@ -1250,14 +1220,14 @@ func toQueryMatch(match gatewayv1.HTTPRouteMatch) []model.KeyValueMatch {
 	return res
 }
 
-func toTLS(tls *gatewayv1.ListenerTLSConfig, grants []gatewayv1.ReferenceGrant, defaultNamespace string, ownerGVK schema.GroupVersionKind) []model.TLSSecret {
+func toTLS(tls *gatewayv1.ListenerTLSConfig, grants []gatewayv1.ReferenceGrant, defaultNamespace string, sourceGVK schema.GroupVersionKind) []model.TLSSecret {
 	if tls == nil {
 		return nil
 	}
 
 	res := make([]model.TLSSecret, 0, len(tls.CertificateRefs))
 	for _, cert := range tls.CertificateRefs {
-		if !helpers.IsSecretReferenceAllowed(defaultNamespace, cert, ownerGVK, grants) {
+		if !helpers.IsSecretReferenceAllowed(defaultNamespace, cert, sourceGVK, grants) {
 			// not allowed to be referred to, skipping
 			continue
 		}

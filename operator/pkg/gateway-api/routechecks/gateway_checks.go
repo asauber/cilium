@@ -14,7 +14,7 @@ import (
 )
 
 func CheckGatewayAllowedForNamespace(input Input, parentRef gatewayv1.ParentReference) (bool, error) {
-	owner, err := input.GetListenerOwner(parentRef)
+	source, err := input.GetListenerSource(parentRef)
 	if err != nil {
 		input.SetParentCondition(parentRef, metav1.Condition{
 			Type:    "Accepted",
@@ -26,7 +26,7 @@ func CheckGatewayAllowedForNamespace(input Input, parentRef gatewayv1.ParentRefe
 		return false, nil
 	}
 
-	listeners := owner.GetListeners()
+	listeners := source.GetListeners()
 	allListenerHostNames := GetAllListenerHostNames(listeners)
 	hasNamespaceRestriction := false
 	for _, listener := range listeners {
@@ -50,7 +50,7 @@ func CheckGatewayAllowedForNamespace(input Input, parentRef gatewayv1.ParentRefe
 		case gatewayv1.NamespacesFromAll:
 			return true, nil
 		case gatewayv1.NamespacesFromSame:
-			if input.GetNamespace() == owner.GetNamespace() {
+			if input.GetNamespace() == source.GetNamespace() {
 				return true, nil
 			}
 		case gatewayv1.NamespacesFromSelector:
@@ -79,7 +79,7 @@ func CheckGatewayAllowedForNamespace(input Input, parentRef gatewayv1.ParentRefe
 }
 
 func CheckGatewayRouteKindAllowed(input Input, parentRef gatewayv1.ParentReference) (bool, error) {
-	owner, err := input.GetListenerOwner(parentRef)
+	source, err := input.GetListenerSource(parentRef)
 	if err != nil {
 		input.SetParentCondition(parentRef, metav1.Condition{
 			Type:    "Accepted",
@@ -93,7 +93,7 @@ func CheckGatewayRouteKindAllowed(input Input, parentRef gatewayv1.ParentReferen
 
 	routeGVK := input.GetGVK()
 	hasKindRestriction := false
-	for _, listener := range owner.GetListeners() {
+	for _, listener := range source.GetListeners() {
 		if parentRef.SectionName != nil && listener.Name != *parentRef.SectionName {
 			continue
 		}
@@ -129,7 +129,7 @@ func CheckGatewayRouteKindAllowed(input Input, parentRef gatewayv1.ParentReferen
 }
 
 func CheckGatewayMatchingHostnames(input Input, parentRef gatewayv1.ParentReference) (bool, error) {
-	owner, err := input.GetListenerOwner(parentRef)
+	source, err := input.GetListenerSource(parentRef)
 	if err != nil {
 		input.SetParentCondition(parentRef, metav1.Condition{
 			Type:    "Accepted",
@@ -141,7 +141,7 @@ func CheckGatewayMatchingHostnames(input Input, parentRef gatewayv1.ParentRefere
 		return false, nil
 	}
 
-	if len(computeHosts(owner.GetListeners(), input.GetHostnames(), nil)) == 0 {
+	if len(computeHosts(source.GetListeners(), input.GetHostnames(), nil)) == 0 {
 
 		input.SetParentCondition(parentRef, metav1.Condition{
 			Type:    string(gatewayv1.RouteConditionAccepted),
@@ -157,7 +157,7 @@ func CheckGatewayMatchingHostnames(input Input, parentRef gatewayv1.ParentRefere
 }
 
 func CheckGatewayMatchingPorts(input Input, parentRef gatewayv1.ParentReference) (bool, error) {
-	owner, err := input.GetListenerOwner(parentRef)
+	source, err := input.GetListenerSource(parentRef)
 	if err != nil {
 		input.SetParentCondition(parentRef, metav1.Condition{
 			Type:    "Accepted",
@@ -170,7 +170,7 @@ func CheckGatewayMatchingPorts(input Input, parentRef gatewayv1.ParentReference)
 	}
 
 	if parentRef.Port != nil {
-		for _, listener := range owner.GetListeners() {
+		for _, listener := range source.GetListeners() {
 			if listener.Port == *parentRef.Port {
 				return true, nil
 			}
@@ -189,7 +189,7 @@ func CheckGatewayMatchingPorts(input Input, parentRef gatewayv1.ParentReference)
 }
 
 func CheckGatewayMatchingSection(input Input, parentRef gatewayv1.ParentReference) (bool, error) {
-	owner, err := input.GetListenerOwner(parentRef)
+	source, err := input.GetListenerSource(parentRef)
 	if err != nil {
 		input.SetParentCondition(parentRef, metav1.Condition{
 			Type:    "Accepted",
@@ -203,7 +203,7 @@ func CheckGatewayMatchingSection(input Input, parentRef gatewayv1.ParentReferenc
 
 	if parentRef.SectionName != nil {
 		found := false
-		for _, listener := range owner.GetListeners() {
+		for _, listener := range source.GetListeners() {
 			if listener.Name == *parentRef.SectionName {
 				found = true
 				break
@@ -235,7 +235,7 @@ func GetAllListenerHostNames(listeners []gatewayv1.Listener) []gatewayv1.Hostnam
 }
 
 func CheckGatewayMatchingProtocol(input Input, parentRef gatewayv1.ParentReference) (bool, error) {
-	owner, err := input.GetListenerOwner(parentRef)
+	source, err := input.GetListenerSource(parentRef)
 	if err != nil {
 		input.SetParentCondition(parentRef, metav1.Condition{
 			Type:    "Accepted",
@@ -250,7 +250,7 @@ func CheckGatewayMatchingProtocol(input Input, parentRef gatewayv1.ParentReferen
 	supportedProtocols := input.GetValidProtocols()
 
 	found := false
-	for _, listener := range owner.GetListeners() {
+	for _, listener := range source.GetListeners() {
 		if slices.Contains(supportedProtocols, listener.Protocol) {
 			found = true
 		}

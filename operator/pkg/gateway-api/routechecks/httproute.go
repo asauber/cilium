@@ -29,7 +29,7 @@ type HTTPRouteInput struct {
 	HTTPRoute      *gatewayv1.HTTPRoute
 	ControllerName string
 
-	gateways      map[gatewayv1.ParentReference]ListenerOwner
+	gateways      map[gatewayv1.ParentReference]ListenerSource
 	gammaServices map[gatewayv1.ParentReference]*corev1.Service
 }
 
@@ -106,13 +106,13 @@ func (h *HTTPRouteInput) GetHostnames() []gatewayv1.Hostname {
 	return h.HTTPRoute.Spec.Hostnames
 }
 
-func (h *HTTPRouteInput) GetListenerOwner(parent gatewayv1.ParentReference) (ListenerOwner, error) {
+func (h *HTTPRouteInput) GetListenerSource(parent gatewayv1.ParentReference) (ListenerSource, error) {
 	if h.gateways == nil {
-		h.gateways = make(map[gatewayv1.ParentReference]ListenerOwner)
+		h.gateways = make(map[gatewayv1.ParentReference]ListenerSource)
 	}
 
-	if owner, exists := h.gateways[parent]; exists {
-		return owner, nil
+	if source, exists := h.gateways[parent]; exists {
+		return source, nil
 	}
 
 	ns := helpers.NamespaceDerefOr(parent.Namespace, h.GetNamespace())
@@ -128,10 +128,10 @@ func (h *HTTPRouteInput) GetListenerOwner(parent gatewayv1.ParentReference) (Lis
 		return nil, fmt.Errorf("gateway %q does not exist: %w", parent.Name, err)
 	}
 
-	owner := &GatewayListenerOwner{Gateway: gw}
-	h.gateways[parent] = owner
+	source := &GatewayListenerSource{Gateway: gw}
+	h.gateways[parent] = source
 
-	return owner, nil
+	return source, nil
 }
 
 func (h *HTTPRouteInput) GetParentGammaService(parent gatewayv1.ParentReference) (*corev1.Service, error) {
