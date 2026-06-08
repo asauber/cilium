@@ -199,6 +199,15 @@ func Test_Conformance(t *testing.T) {
 			},
 		},
 		{
+			name: "gateway-per-listener-namespace-policy",
+			gateway: []gwDetails{
+				{FullName: types.NamespacedName{
+					Name:      "per-listener-namespace-policy",
+					Namespace: "gateway-conformance-infra",
+				}},
+			},
+		},
+		{
 			name: "gateway-omit-sectionName-listeners",
 			gateway: []gwDetails{
 				{FullName: types.NamespacedName{

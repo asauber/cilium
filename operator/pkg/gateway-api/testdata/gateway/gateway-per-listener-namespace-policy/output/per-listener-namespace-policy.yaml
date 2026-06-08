@@ -1,0 +1,84 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: per-listener-namespace-policy
+  namespace: gateway-conformance-infra
+spec:
+  gatewayClassName: cilium
+  listeners:
+  - allowedRoutes:
+      namespaces:
+        from: All
+    name: permissive
+    port: 80
+    protocol: HTTP
+  - allowedRoutes:
+      namespaces:
+        from: Same
+    name: same-only
+    port: 8080
+    protocol: HTTP
+status:
+  conditions:
+  - lastTransitionTime: "2026-06-08T00:00:00Z"
+    message: Gateway successfully scheduled
+    observedGeneration: 0
+    reason: Accepted
+    status: "True"
+    type: Accepted
+  - lastTransitionTime: "2026-06-08T00:00:00Z"
+    message: Gateway waiting for address
+    reason: AddressNotAssigned
+    status: "False"
+    type: Programmed
+  listeners:
+  - attachedRoutes: 1
+    conditions:
+    - lastTransitionTime: "2026-06-08T00:00:00Z"
+      message: Resolved Refs
+      observedGeneration: 0
+      reason: ResolvedRefs
+      status: "True"
+      type: ResolvedRefs
+    - lastTransitionTime: "2026-06-08T00:00:00Z"
+      message: Listener Accepted
+      observedGeneration: 0
+      reason: Accepted
+      status: "True"
+      type: Accepted
+    - lastTransitionTime: "2026-06-08T00:00:00Z"
+      message: Address not ready yet
+      reason: Pending
+      status: "False"
+      type: Programmed
+    name: permissive
+    supportedKinds:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+    - group: gateway.networking.k8s.io
+      kind: GRPCRoute
+  - attachedRoutes: 0
+    conditions:
+    - lastTransitionTime: "2026-06-08T00:00:00Z"
+      message: Resolved Refs
+      observedGeneration: 0
+      reason: ResolvedRefs
+      status: "True"
+      type: ResolvedRefs
+    - lastTransitionTime: "2026-06-08T00:00:00Z"
+      message: Listener Accepted
+      observedGeneration: 0
+      reason: Accepted
+      status: "True"
+      type: Accepted
+    - lastTransitionTime: "2026-06-08T00:00:00Z"
+      message: Address not ready yet
+      reason: Pending
+      status: "False"
+      type: Programmed
+    name: same-only
+    supportedKinds:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+    - group: gateway.networking.k8s.io
+      kind: GRPCRoute
