@@ -1251,14 +1251,16 @@ func (r *gatewayReconciler) runCommonRouteChecks(input routechecks.Input, parent
 	return nil
 }
 
-// gatewayCheckFuncs are the check functions that validate a route against a Gateway or ListenerSet's listeners.
-var gatewayCheckFuncs = []routechecks.CheckWithParentFunc{
-	routechecks.CheckGatewayMatchingProtocol,
-	routechecks.CheckGatewayRouteKindAllowed,
-	routechecks.CheckGatewayMatchingPorts,
-	routechecks.CheckGatewayMatchingHostnames,
-	routechecks.CheckGatewayMatchingSection,
-	routechecks.CheckGatewayAllowedForNamespace,
+// parentCheckFuncs are the check functions that validate a route against the
+// listeners of its parent (the Gateway or ListenerSet identified by the route's
+// parentRef).
+var parentCheckFuncs = []routechecks.CheckWithParentFunc{
+	routechecks.CheckParentMatchingProtocol,
+	routechecks.CheckParentRouteKindAllowed,
+	routechecks.CheckParentMatchingPorts,
+	routechecks.CheckParentMatchingHostnames,
+	routechecks.CheckParentMatchingSection,
+	routechecks.CheckParentAllowedForNamespace,
 }
 
 // backendCheckFuncs are the check functions that validate route backends.
@@ -1307,7 +1309,7 @@ func (r *gatewayReconciler) runGatewayRouteChecks(input routechecks.Input, paren
 
 	setInitialRouteConditions(input, parent)
 
-	if err := runCheckFuncs(input, parent, gatewayCheckFuncs, "Gateway"); err != nil {
+	if err := runCheckFuncs(input, parent, parentCheckFuncs, "Parent"); err != nil {
 		return err
 	}
 	return runCheckFuncs(input, parent, backendCheckFuncs, "Backend")
@@ -1356,7 +1358,7 @@ func (r *gatewayReconciler) runListenerSetRouteChecks(input routechecks.Input, p
 		},
 	}
 
-	if err := runCheckFuncs(lsInput, parent, gatewayCheckFuncs, "Gateway for ListenerSet"); err != nil {
+	if err := runCheckFuncs(lsInput, parent, parentCheckFuncs, "Parent (ListenerSet)"); err != nil {
 		return err
 	}
 	return runCheckFuncs(input, parent, backendCheckFuncs, "Backend for ListenerSet")
