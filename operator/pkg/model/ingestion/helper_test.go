@@ -11,43 +11,19 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	k8syaml "sigs.k8s.io/yaml"
 )
 
-// namespaceResolver returns an AllowedNamespacesResolver that mirrors the
-// gateway-api reconciler's resolveAllowedNamespaces, but evaluates the
-// listener's allowedRoutes.namespaces policy against the supplied in-memory
-// Namespace objects (rather than via a Kubernetes client). The Selector case
-// is the only one that consults the namespace list; the other cases are
-// derived purely from the listener spec.
-func namespaceResolver(t *testing.T, namespaces []corev1.Namespace) AllowedNamespacesResolver {
-	t.Helper()
-	return func(listenerNamespace string, l gatewayv1.Listener) map[string]struct{} {
-		if l.AllowedRoutes == nil || l.AllowedRoutes.Namespaces == nil || l.AllowedRoutes.Namespaces.From == nil {
-			return map[string]struct{}{listenerNamespace: {}}
-		}
-		switch *l.AllowedRoutes.Namespaces.From {
-		case gatewayv1.NamespacesFromAll:
-			return nil
-		case gatewayv1.NamespacesFromSame:
-			return map[string]struct{}{listenerNamespace: {}}
-		case gatewayv1.NamespacesFromSelector:
-			sel, err := metav1.LabelSelectorAsSelector(l.AllowedRoutes.Namespaces.Selector)
-			require.NoError(t, err)
-			allowed := map[string]struct{}{}
-			for _, ns := range namespaces {
-				if sel.Matches(labels.Set(ns.Labels)) {
-					allowed[ns.Name] = struct{}{}
-				}
-			}
-			return allowed
-		}
-		return map[string]struct{}{listenerNamespace: {}}
-	}
+// permissiveNamespaceResolver returns an AllowedNamespacesResolver that admits
+// routes from all namespaces. Ingestion tests do not exercise namespace policy:
+// that policy is implemented by the gateway-api reconciler's
+// resolveAllowedNamespaces and tested via the reconciler test suite, which
+// runs the real resolver against a fake Kubernetes client. Ingestion tests
+// focus on translation only.
+func permissiveNamespaceResolver() AllowedNamespacesResolver {
+	return func(string, gatewayv1.Listener) map[string]struct{} { return nil }
 }
 
 func readInput(t *testing.T, file string, obj any) {
@@ -57,6 +33,27 @@ func readInput(t *testing.T, file string, obj any) {
 	}
 	require.NoError(t, err)
 	require.NoError(t, k8syaml.Unmarshal(inputYaml, obj))
+}
+
+// acceptParentRefs synthesizes Accepted=True conditions on the route's
+// RouteStatus for each declared parentRef. This mirrors what the reconciler's
+// setHTTPRouteStatuses (etc.) writes before BuildListenersWithRoutes runs in
+// production, and lets test fixtures omit the boilerplate Status block.
+func acceptParentRefs(status *gatewayv1.RouteStatus, refs []gatewayv1.ParentReference, routeNamespace string) {
+	for _, ref := range refs {
+		status.Parents = append(status.Parents, gatewayv1.RouteParentStatus{
+			ParentRef:      ref,
+			ControllerName: "io.cilium/gateway-controller",
+			Conditions: []metav1.Condition{
+				{
+					Type:   string(gatewayv1.RouteConditionAccepted),
+					Status: metav1.ConditionTrue,
+					Reason: string(gatewayv1.RouteReasonAccepted),
+				},
+			},
+		})
+	}
+	_ = routeNamespace
 }
 
 func readOutput(t *testing.T, file string, obj any) string {

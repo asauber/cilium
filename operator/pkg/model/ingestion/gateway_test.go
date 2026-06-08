@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
@@ -60,8 +59,6 @@ func TestHTTPGatewayAPI(t *testing.T) {
 		"ListenerSet/basic-http-routing":                          {},
 		"ListenerSet/route-isolation-gateway-parentref":           {},
 		"ListenerSet/route-isolation-both-parentrefs":             {},
-		"ListenerSet/allowed-routes-same-namespace":               {},
-		"ListenerSet/allowed-routes-namespace-selector":           {},
 		"ListenerSet/reference-grant-missing":                     {},
 		"ListenerSet/reference-grant-gateway-only":                {},
 		"ListenerSet/reference-grant-valid":                       {},
@@ -224,9 +221,30 @@ func readGatewayInput(t *testing.T, testName string) Input {
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-gatewayclass.yaml"), &input.GatewayClass)
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-gatewayclassconfig.yaml"), &input.GatewayClassConfig)
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-gateway.yaml"), &input.Gateway)
-	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-httproute.yaml"), &input.HTTPRoutes)
-	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-tlsroute.yaml"), &input.TLSRoutes)
-	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-grpcroute.yaml"), &input.GRPCRoutes)
+
+	var httpRoutes []gatewayv1.HTTPRoute
+	var tlsRoutes []gatewayv1.TLSRoute
+	var grpcRoutes []gatewayv1.GRPCRoute
+	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-httproute.yaml"), &httpRoutes)
+	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-tlsroute.yaml"), &tlsRoutes)
+	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-grpcroute.yaml"), &grpcRoutes)
+
+	// Test fixtures intentionally do not include route Status.Parents because
+	// they exercise ingestion in isolation, but the canonical attachment path
+	// requires routes to carry Accepted=True on each parentRef (set by the
+	// reconciler's setHTTPRouteStatuses before BuildListenersWithRoutes runs).
+	// Synthesize those conditions here so the in-test data path mirrors what
+	// reaches ingestion in production.
+	for i := range httpRoutes {
+		acceptParentRefs(&httpRoutes[i].Status.RouteStatus, httpRoutes[i].Spec.ParentRefs, httpRoutes[i].GetNamespace())
+	}
+	for i := range tlsRoutes {
+		acceptParentRefs(&tlsRoutes[i].Status.RouteStatus, tlsRoutes[i].Spec.ParentRefs, tlsRoutes[i].GetNamespace())
+	}
+	for i := range grpcRoutes {
+		acceptParentRefs(&grpcRoutes[i].Status.RouteStatus, grpcRoutes[i].Spec.ParentRefs, grpcRoutes[i].GetNamespace())
+	}
+
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-service.yaml"), &input.Services)
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-serviceimport.yaml"), &input.ServiceImports)
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-referencegrant.yaml"), &input.ReferenceGrants)
@@ -234,12 +252,16 @@ func readGatewayInput(t *testing.T, testName string) Input {
 	var listenerSets []gatewayv1.ListenerSet
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-listenersets.yaml"), &listenerSets)
 
-	var namespaces []corev1.Namespace
-	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-namespaces.yaml"), &namespaces)
-
-	if len(listenerSets) > 0 {
-		input.MergedListeners = BuildMergedListeners(&input.Gateway, listenerSets, namespaceResolver(t, namespaces))
-	}
+	// Build per-listener route attachments using the canonical builder that the
+	// reconciler also uses. Namespace policy is enforced by the reconciler's
+	// resolveAllowedNamespaces in production and tested in the reconciler test
+	// suite; ingestion tests are about translation and use a permissive
+	// resolver.
+	input.Listeners = BuildListenersWithRoutes(
+		&input.Gateway, listenerSets,
+		httpRoutes, grpcRoutes, tlsRoutes,
+		permissiveNamespaceResolver(),
+	)
 
 	btlspMapFixture := &BackendTLSPolicyMapFixture{}
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-backendtlspolicy.yaml"), btlspMapFixture)
