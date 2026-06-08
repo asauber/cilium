@@ -141,9 +141,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
-	// Build merged listener list from Gateway + attached ListenerSets.
-	// This must happen before route fetching so we know which ListenerSets to query.
-	mergedListeners, attachedListenerSets := r.resolveAllowedListeners(ctx, scopedLog, gw)
+	attachedListenerSets := r.resolveAttachedListenerSets(ctx, scopedLog, gw)
 
 	// Add Routes targeting attached ListenerSets
 	if helpers.HasListenerSetSupport(r.Client.Scheme()) {
@@ -245,12 +243,20 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return controllerruntime.Fail(err)
 	}
 
-	// attached Routes are the subset of all Routes that successfully attach to
-	// this Gateway (or one of its attached ListenerSets) per the Gateway-wide
-	// attachment checks
-	attachedHTTPRoutes := r.filterHTTPRoutesByGateway(ctx, gw, attachedListenerSets, allHTTPRoutes.Items)
-	attachedTLSRoutes := r.filterTLSRoutesByGateway(ctx, gw, attachedListenerSets, allTLSRoutes.Items)
-	attachedGRPCRoutes := r.filterGRPCRoutesByGateway(ctx, gw, attachedListenerSets, allGRPCRoutes.Items)
+	// Build the per-listener attached-routes set once. listenersWithRoutes is
+	// the single source of truth for both ingestion (translation) and per-listener
+	// status counters below.
+	listenersWithRoutes := ingestion.BuildListenersWithRoutes(
+		gw, attachedListenerSets,
+		allHTTPRoutes.Items, allGRPCRoutes.Items, allTLSRoutes.Items,
+		r.namespaceResolver(ctx, scopedLog),
+	)
+
+	// attachedHTTPRoutes is the deduplicated union of HTTPRoutes attached to
+	// any listener of this Gateway or its attached ListenerSets; used by
+	// BackendTLSPolicy status to identify policies that target backends used
+	// by routes rolling up to this Gateway.
+	attachedHTTPRoutes := uniqueAttachedHTTPRoutes(listenersWithRoutes)
 
 	if err := r.setBackendTLSPolicyStatuses(scopedLog, ctx, attachedHTTPRoutes, btlspMap, req.NamespacedName); err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to update BackendTLSPolicy Status", logfields.Error, err)
@@ -262,20 +268,17 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		GatewayClass:        *gwc,
 		GatewayClassConfig:  gatewayClassConfig,
 		Gateway:             *gw,
-		HTTPRoutes:          attachedHTTPRoutes,
-		TLSRoutes:           attachedTLSRoutes,
-		GRPCRoutes:          attachedGRPCRoutes,
 		Services:            servicesList.Items,
 		ServiceImports:      serviceImportsList.Items,
 		ReferenceGrants:     grants.Items,
 		BackendTLSPolicyMap: btlspMap,
-		MergedListeners:     mergedListeners,
+		Listeners:           listenersWithRoutes,
 	})
 
-	// setListenerStatus and setListenerSetStatuses re-run per-listener
-	// attachment from the full candidate set, so they receive all*Routes
-	// rather than the Gateway-filtered attached*Routes.
-	validListener, err := r.setListenerStatus(ctx, gw, allHTTPRoutes.Items, allTLSRoutes.Items, allGRPCRoutes.Items)
+	// setListenerStatus and setListenerSetStatuses read per-listener attachment
+	// counts from listenersWithRoutes (built above) for each Gateway / ListenerSet
+	// listener.
+	validListener, err := r.setListenerStatus(ctx, gw, listenersWithRoutes)
 	if err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to set listener status", logfields.Error, err)
 		setGatewayAccepted(gw, false, "Unable to set listener status", gatewayv1.GatewayReasonNoResources)
@@ -283,7 +286,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return r.handleReconcileErrorWithStatus(ctx, err, original, gw)
 	}
 
-	r.setListenerSetStatuses(ctx, gw, attachedListenerSets, allHTTPRoutes.Items, allTLSRoutes.Items, allGRPCRoutes.Items)
+	r.setListenerSetStatuses(ctx, gw, attachedListenerSets, listenersWithRoutes)
 	if !validListener {
 		err := fmt.Errorf("No Accepted Listeners for Gateway")
 		scopedLog.ErrorContext(ctx, "No Accepted Listeners for Gateway", logfields.Error, err)
@@ -452,94 +455,44 @@ func (r *gatewayReconciler) updateStatus(ctx context.Context, original *gatewayv
 	return r.Client.Status().Update(ctx, new)
 }
 
-func (r *gatewayReconciler) filterHTTPRoutesByGateway(ctx context.Context, gw *gatewayv1.Gateway, attachedListenerSets []gatewayv1.ListenerSet, routes []gatewayv1.HTTPRoute) []gatewayv1.HTTPRoute {
-	var filtered []gatewayv1.HTTPRoute
-	allListenerHostNames := routechecks.GetAllListenerHostNames(gw.Spec.Listeners)
-	for _, route := range routes {
-		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, attachedListenerSets) && isAllowed(ctx, r.Client, gw, &route, r.logger) && len(computeHosts(gw, route.Spec.Hostnames, allListenerHostNames)) > 0 {
-			filtered = append(filtered, route)
+// countAttachedRoutes returns the total number of routes (HTTP + GRPC + TLS)
+// attached to the listener whose source and listener name match the given
+// values. listenersWithRoutes is the per-listener attachment built by
+// ingestion.BuildListenersWithRoutes; per-source matching is exact on Kind,
+// Name, and Namespace.
+func countAttachedRoutes(listenersWithRoutes []ingestion.ListenerWithRoutes, sourceKind, sourceName, sourceNamespace string, listenerName gatewayv1.SectionName) int32 {
+	for i := range listenersWithRoutes {
+		lwr := &listenersWithRoutes[i]
+		if lwr.Source.Kind != sourceKind ||
+			lwr.Source.Name != sourceName ||
+			lwr.Source.Namespace != sourceNamespace ||
+			lwr.Listener.Name != listenerName {
+			continue
 		}
+		return int32(len(lwr.HTTPRoutes) + len(lwr.GRPCRoutes) + len(lwr.TLSRoutes))
 	}
-	return filtered
+	return 0
 }
 
-func (r *gatewayReconciler) filterGRPCRoutesByGateway(ctx context.Context, gw *gatewayv1.Gateway, attachedListenerSets []gatewayv1.ListenerSet, routes []gatewayv1.GRPCRoute) []gatewayv1.GRPCRoute {
-	var filtered []gatewayv1.GRPCRoute
-	allListenerHostNames := routechecks.GetAllListenerHostNames(gw.Spec.Listeners)
-
-	for _, route := range routes {
-		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, attachedListenerSets) && isAllowed(ctx, r.Client, gw, &route, r.logger) && len(computeHosts(gw, route.Spec.Hostnames, allListenerHostNames)) > 0 {
-			filtered = append(filtered, route)
+// uniqueAttachedHTTPRoutes returns the deduplicated union of HTTPRoutes
+// attached to any listener in listenersWithRoutes. Dedup key is the route's
+// namespace/name. The slice underlying the returned values is shared with the
+// input listeners; callers must not mutate route entries.
+func uniqueAttachedHTTPRoutes(listenersWithRoutes []ingestion.ListenerWithRoutes) []gatewayv1.HTTPRoute {
+	seen := map[types.NamespacedName]struct{}{}
+	var out []gatewayv1.HTTPRoute
+	for i := range listenersWithRoutes {
+		for j := range listenersWithRoutes[i].HTTPRoutes {
+			r := listenersWithRoutes[i].HTTPRoutes[j]
+			key := types.NamespacedName{Namespace: r.GetNamespace(), Name: r.GetName()}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, r)
 		}
 	}
-	return filtered
-}
-
-func (r *gatewayReconciler) filterHTTPRoutesByListener(ctx context.Context, gw *gatewayv1.Gateway, source routechecks.ListenerSource, listener *gatewayv1.Listener, routes []gatewayv1.HTTPRoute, attachedListenerSets ...gatewayv1.ListenerSet) []gatewayv1.HTTPRoute {
-	sourceNS := source.GetNamespace()
-	var filtered []gatewayv1.HTTPRoute
-	for _, route := range routes {
-		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, attachedListenerSets) &&
-			listenerisAllowed(ctx, r.Client, sourceNS, listener, &route, r.logger) &&
-			len(computeHostsForListener(listener, route.Spec.Hostnames, nil)) > 0 &&
-			parentRefMatched(source, listener, route.GetNamespace(), route.Spec.ParentRefs) {
-			filtered = append(filtered, route)
-		}
-	}
-	return filtered
-}
-
-func (r *gatewayReconciler) filterGRPCRoutesByListener(ctx context.Context, gw *gatewayv1.Gateway, source routechecks.ListenerSource, listener *gatewayv1.Listener, routes []gatewayv1.GRPCRoute, attachedListenerSets ...gatewayv1.ListenerSet) []gatewayv1.GRPCRoute {
-	sourceNS := source.GetNamespace()
-	var filtered []gatewayv1.GRPCRoute
-	for _, route := range routes {
-		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, attachedListenerSets) &&
-			listenerisAllowed(ctx, r.Client, sourceNS, listener, &route, r.logger) &&
-			len(computeHostsForListener(listener, route.Spec.Hostnames, nil)) > 0 &&
-			parentRefMatched(source, listener, route.GetNamespace(), route.Spec.ParentRefs) {
-			filtered = append(filtered, route)
-		}
-	}
-	return filtered
-}
-
-func parentRefMatched(source routechecks.ListenerSource, listener *gatewayv1.Listener, routeNamespace string, refs []gatewayv1.ParentReference) bool {
-	sourceKind := "Gateway"
-	if source.IsListenerSet() {
-		sourceKind = "ListenerSet"
-	}
-	for _, ref := range refs {
-		if ingestion.ListenerMatchesParentRef(ref, sourceKind, source.GetName(), source.GetNamespace(),
-			listener.Name, listener.Port, routeNamespace) {
-			return true
-		}
-	}
-	return false
-}
-
-func (r *gatewayReconciler) filterTLSRoutesByGateway(ctx context.Context, gw *gatewayv1.Gateway, attachedListenerSets []gatewayv1.ListenerSet, routes []gatewayv1.TLSRoute) []gatewayv1.TLSRoute {
-	var filtered []gatewayv1.TLSRoute
-	for _, route := range routes {
-		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, attachedListenerSets) && isAllowed(ctx, r.Client, gw, &route, r.logger) &&
-			len(computeHosts(gw, route.Spec.Hostnames, nil)) > 0 {
-			filtered = append(filtered, route)
-		}
-	}
-	return filtered
-}
-
-func (r *gatewayReconciler) filterTLSRoutesByListener(ctx context.Context, gw *gatewayv1.Gateway, source routechecks.ListenerSource, listener *gatewayv1.Listener, routes []gatewayv1.TLSRoute, attachedListenerSets ...gatewayv1.ListenerSet) []gatewayv1.TLSRoute {
-	sourceNS := source.GetNamespace()
-	var filtered []gatewayv1.TLSRoute
-	for _, route := range routes {
-		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, attachedListenerSets) &&
-			listenerisAllowed(ctx, r.Client, sourceNS, listener, &route, r.logger) &&
-			len(computeHostsForListener(listener, route.Spec.Hostnames, nil)) > 0 &&
-			parentRefMatched(source, listener, route.GetNamespace(), route.Spec.ParentRefs) {
-			filtered = append(filtered, route)
-		}
-	}
-	return filtered
+	return out
 }
 
 func (r *gatewayReconciler) updateListenerSetStatus(ctx context.Context, original *gatewayv1.ListenerSet, new *gatewayv1.ListenerSet) error {
@@ -552,14 +505,15 @@ func (r *gatewayReconciler) updateListenerSetStatus(ctx context.Context, origina
 	return r.Client.Status().Update(ctx, new)
 }
 
-// resolveAllowedListeners does each of the following:
-// * builds the merged listener list from the Gateway's own listeners and any attached ListenerSets
-// * sets ListenerSet status in the case that the ListenerSet is not allowed by the Gateway
+// resolveAttachedListenerSets does each of the following:
+// * lists the ListenerSets that target this Gateway
+// * filters them by the Gateway's allowedListeners policy
+// * writes "not allowed" status on rejected ListenerSets
 // * sets AttachedListenerSets on Gateway status
-// * returns both the merged listener list and a list of attached ListenerSets
-func (r *gatewayReconciler) resolveAllowedListeners(ctx context.Context, scopedLog *slog.Logger, gw *gatewayv1.Gateway) ([]ingestion.ListenerWithContext, []gatewayv1.ListenerSet) {
+// * returns the list of attached ListenerSets
+func (r *gatewayReconciler) resolveAttachedListenerSets(ctx context.Context, scopedLog *slog.Logger, gw *gatewayv1.Gateway) []gatewayv1.ListenerSet {
 	if !helpers.HasListenerSetSupport(r.Client.Scheme()) {
-		return ingestion.BuildMergedListeners(gw, nil, nil), nil
+		return nil
 	}
 
 	lsList := &gatewayv1.ListenerSetList{}
@@ -567,7 +521,7 @@ func (r *gatewayReconciler) resolveAllowedListeners(ctx context.Context, scopedL
 		FieldSelector: fields.OneTermEqualSelector(indexers.ListenerSetGatewayIndex, client.ObjectKeyFromObject(gw).String()),
 	}); err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to list ListenerSets", logfields.Error, err)
-		return ingestion.BuildMergedListeners(gw, nil, nil), nil
+		return nil
 	}
 
 	sortListenerSets(lsList.Items)
@@ -594,10 +548,15 @@ func (r *gatewayReconciler) resolveAllowedListeners(ctx context.Context, scopedL
 		gw.Status.AttachedListenerSets = &attachedCount
 	}
 
-	resolveNS := func(listenerNamespace string, l gatewayv1.Listener) map[string]struct{} {
+	return attachedSets
+}
+
+// namespaceResolver returns an ingestion.AllowedNamespacesResolver bound to
+// this reconciler's client and logger.
+func (r *gatewayReconciler) namespaceResolver(ctx context.Context, scopedLog *slog.Logger) ingestion.AllowedNamespacesResolver {
+	return func(listenerNamespace string, l gatewayv1.Listener) map[string]struct{} {
 		return resolveAllowedNamespaces(ctx, r.Client, listenerNamespace, l, scopedLog)
 	}
-	return ingestion.BuildMergedListeners(gw, attachedSets, resolveNS), attachedSets
 }
 
 // getGatewayClassConfig returns the CiliumGatewayClassConfig referenced by the GatewayClass.
@@ -772,7 +731,7 @@ func (r *gatewayReconciler) validateListener(ctx context.Context, l gatewayv1.Li
 		invalidReason: gatewayv1.ListenerReasonInvalid,
 	}
 
-	allSupported := getSupportedRouteKinds(l.Protocol)
+	allSupported := helpers.GetSupportedRouteKinds(l.Protocol)
 	if allSupported == nil {
 		res.invalidMessages = append(res.invalidMessages, "Unsupported Listener Protocol.")
 		res.isValid = false
@@ -873,7 +832,7 @@ func (r *gatewayReconciler) validateListener(ctx context.Context, l gatewayv1.Li
 	return res
 }
 
-func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1.Gateway, allHTTPRoutes []gatewayv1.HTTPRoute, allTLSRoutes []gatewayv1.TLSRoute, allGRPCRoutes []gatewayv1.GRPCRoute) (bool, error) {
+func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1.Gateway, listenersWithRoutes []ingestion.ListenerWithRoutes) (bool, error) {
 	grants := &gatewayv1.ReferenceGrantList{}
 	if err := r.Client.List(ctx, grants); err != nil {
 		return false, fmt.Errorf("failed to retrieve reference grants: %w", err)
@@ -901,11 +860,7 @@ func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1
 				listenerAcceptedCondition(gw.GetGeneration(), true, gatewayv1.ListenerReasonAccepted, "Listener Accepted"),
 				listenerProgrammedCondition(gw.GetGeneration(), false, "Address not ready yet"))
 		}
-		var attachedRoutes int32
-		source := &routechecks.GatewayListenerSource{Gateway: gw}
-		attachedRoutes += int32(len(r.filterHTTPRoutesByListener(ctx, gw, source, &l, allHTTPRoutes)))
-		attachedRoutes += int32(len(r.filterGRPCRoutesByListener(ctx, gw, source, &l, allGRPCRoutes)))
-		attachedRoutes += int32(len(r.filterTLSRoutesByListener(ctx, gw, source, &l, allTLSRoutes)))
+		attachedRoutes := countAttachedRoutes(listenersWithRoutes, "Gateway", gw.GetName(), gw.GetNamespace(), l.Name)
 
 		found := false
 		for i := range gw.Status.Listeners {
@@ -1123,9 +1078,7 @@ func (r *gatewayReconciler) setListenerSetStatuses(
 	ctx context.Context,
 	gw *gatewayv1.Gateway,
 	attachedListenerSets []gatewayv1.ListenerSet,
-	allHTTPRoutes []gatewayv1.HTTPRoute,
-	allTLSRoutes []gatewayv1.TLSRoute,
-	allGRPCRoutes []gatewayv1.GRPCRoute,
+	listenersWithRoutes []ingestion.ListenerWithRoutes,
 ) {
 	grants := &gatewayv1.ReferenceGrantList{}
 	if err := r.Client.List(ctx, grants); err != nil {
@@ -1187,14 +1140,7 @@ func (r *gatewayReconciler) setListenerSetStatuses(
 			}
 
 			// Count attached routes for this listener
-			source := &routechecks.ListenerSetListenerSource{
-				Name:      ls.GetName(),
-				Namespace: ls.GetNamespace(),
-			}
-			var attachedRoutes int32
-			attachedRoutes += int32(len(r.filterHTTPRoutesByListener(ctx, gw, source, &l, allHTTPRoutes, *ls)))
-			attachedRoutes += int32(len(r.filterGRPCRoutesByListener(ctx, gw, source, &l, allGRPCRoutes, *ls)))
-			attachedRoutes += int32(len(r.filterTLSRoutesByListener(ctx, gw, source, &l, allTLSRoutes, *ls)))
+			attachedRoutes := countAttachedRoutes(listenersWithRoutes, "ListenerSet", ls.GetName(), ls.GetNamespace(), l.Name)
 
 			listenerStatuses = append(listenerStatuses, gatewayv1.ListenerEntryStatus{
 				Name:           entry.Name,

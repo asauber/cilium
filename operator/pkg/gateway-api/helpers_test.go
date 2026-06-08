@@ -17,6 +17,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
+
+	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
 )
 
 func Test_isKindAllowed(t *testing.T) {
@@ -27,12 +29,12 @@ func Test_isKindAllowed(t *testing.T) {
 		AllowedRoutes: &gatewayv1.AllowedRoutes{
 			Kinds: []gatewayv1.RouteGroupKind{
 				{
-					Group: GroupPtr(gatewayv1.GroupName),
-					Kind:  kindHTTPRoute,
+					Group: helpers.GroupPtr(gatewayv1.GroupName),
+					Kind:  helpers.KindHTTPRoute,
 				},
 				{
-					Group: GroupPtr(gatewayv1.GroupName),
-					Kind:  kindGRPCRoute,
+					Group: helpers.GroupPtr(gatewayv1.GroupName),
+					Kind:  helpers.KindGRPCRoute,
 				},
 			},
 		},
@@ -62,7 +64,7 @@ func Test_isKindAllowed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, isKindAllowed(listener, tt.route))
+			assert.Equal(t, tt.expected, helpers.IsKindAllowed(listener, tt.route))
 		})
 	}
 }
