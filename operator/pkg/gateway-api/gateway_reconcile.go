@@ -126,50 +126,19 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
-	attachedListenerSets := r.resolveAttachedListenerSets(ctx, scopedLog, gw)
+	attachedListenerSets, err := r.resolveAttachedListenerSets(ctx, scopedLog, gw)
+	if err != nil {
+		scopedLog.ErrorContext(ctx, err.Error(), logfields.Error, err)
+		return r.handleReconcileErrorWithStatus(ctx, err, original, gw)
+	}
 
-	// Add Routes targeting attached ListenerSets
 	if helpers.HasListenerSetSupport(r.Client.Scheme()) {
-		for _, ls := range attachedListenerSets {
-			lsKey := client.ObjectKeyFromObject(&ls).String()
+		discovered := r.discoverRoutesFromListenerSets(ctx, scopedLog, attachedListenerSets)
 
-			lsHTTPRoutes := &gatewayv1.HTTPRouteList{}
-			if err := r.Client.List(ctx, lsHTTPRoutes, &client.ListOptions{
-				FieldSelector: fields.OneTermEqualSelector(indexers.HTTPRouteListenerSetIndex, lsKey),
-			}); err != nil {
-				scopedLog.ErrorContext(ctx, "Unable to list HTTPRoutes for ListenerSet",
-					logfields.Error, err,
-					logfields.Resource, lsKey)
-			} else {
-				allHTTPRoutes.Items = append(allHTTPRoutes.Items, lsHTTPRoutes.Items...)
-			}
+		allHTTPRoutes.Items = append(allHTTPRoutes.Items, discovered.HTTPRoutes...)
+		allGRPCRoutes.Items = append(allGRPCRoutes.Items, discovered.GRPCRoutes...)
+		allTLSRoutes.Items = append(allTLSRoutes.Items, discovered.TLSRoutes...)
 
-			lsGRPCRoutes := &gatewayv1.GRPCRouteList{}
-			if err := r.Client.List(ctx, lsGRPCRoutes, &client.ListOptions{
-				FieldSelector: fields.OneTermEqualSelector(indexers.GRPCRouteListenerSetIndex, lsKey),
-			}); err != nil {
-				scopedLog.ErrorContext(ctx, "Unable to list GRPCRoutes for ListenerSet",
-					logfields.Error, err,
-					logfields.Resource, lsKey)
-			} else {
-				allGRPCRoutes.Items = append(allGRPCRoutes.Items, lsGRPCRoutes.Items...)
-			}
-
-			if helpers.HasTLSRouteSupport(r.Client.Scheme()) {
-				lsTLSRoutes := &gatewayv1.TLSRouteList{}
-				if err := r.Client.List(ctx, lsTLSRoutes, &client.ListOptions{
-					FieldSelector: fields.OneTermEqualSelector(indexers.TLSRouteListenerSetIndex, lsKey),
-				}); err != nil {
-					scopedLog.ErrorContext(ctx, "Unable to list TLSRoutes for ListenerSet",
-						logfields.Error, err,
-						logfields.Resource, lsKey)
-				} else {
-					allTLSRoutes.Items = append(allTLSRoutes.Items, lsTLSRoutes.Items...)
-				}
-			}
-		}
-
-		// Deduplicate routes that may appear in both Gateway and ListenerSet indices
 		allHTTPRoutes.Items = dedupeByNamespacedName(allHTTPRoutes.Items)
 		allGRPCRoutes.Items = dedupeByNamespacedName(allGRPCRoutes.Items)
 		allTLSRoutes.Items = dedupeByNamespacedName(allTLSRoutes.Items)
@@ -228,9 +197,8 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return controllerruntime.Fail(err)
 	}
 
-	// Build the per-listener attached-routes set once. listenersWithRoutes is
-	// the single source of truth for both ingestion (translation) and per-listener
-	// status counters below.
+	// Build the set of listeners for this Gateway its ListenerSets with their
+	// attached Routes. This is the source of truth for allowed rout attachment.
 	listenersWithRoutes := ingestion.BuildListenersWithRoutes(
 		gw, attachedListenerSets,
 		allHTTPRoutes.Items, allGRPCRoutes.Items, allTLSRoutes.Items,
@@ -481,36 +449,32 @@ func (r *gatewayReconciler) updateListenerSetStatus(ctx context.Context, origina
 	return r.Client.Status().Update(ctx, new)
 }
 
-// resolveAttachedListenerSets does each of the following:
-// * lists the ListenerSets that target this Gateway
-// * filters them by the Gateway's allowedListeners policy
-// * writes "not allowed" status on rejected ListenerSets
-// * sets AttachedListenerSets on Gateway status
-// * returns the list of attached ListenerSets
-func (r *gatewayReconciler) resolveAttachedListenerSets(ctx context.Context, scopedLog *slog.Logger, gw *gatewayv1.Gateway) []gatewayv1.ListenerSet {
+func (r *gatewayReconciler) resolveAttachedListenerSets(ctx context.Context, scopedLog *slog.Logger, gw *gatewayv1.Gateway) ([]gatewayv1.ListenerSet, error) {
+	var attachedSets []gatewayv1.ListenerSet
+
 	if !helpers.HasListenerSetSupport(r.Client.Scheme()) {
-		return nil
+		return attachedSets, nil
 	}
 
 	lsList := &gatewayv1.ListenerSetList{}
 	if err := r.Client.List(ctx, lsList, &client.ListOptions{
 		FieldSelector: fields.OneTermEqualSelector(indexers.ListenerSetGatewayIndex, client.ObjectKeyFromObject(gw).String()),
 	}); err != nil {
-		scopedLog.ErrorContext(ctx, "Unable to list ListenerSets", logfields.Error, err)
-		return nil
+		msg := "Unable to list ListenerSets"
+		scopedLog.ErrorContext(ctx, msg, logfields.Error, err)
+		return attachedSets, fmt.Errorf(msg)
 	}
 
 	sortListenerSets(lsList.Items)
 
 	var attachedCount int32
-	var attachedSets []gatewayv1.ListenerSet
 	for i := range lsList.Items {
 		ls := &lsList.Items[i]
 		if !isListenerSetAllowed(ctx, r.Client, gw, ls, scopedLog) {
-			// Write rejected status on the ListenerSet
 			original := ls.DeepCopy()
-			setListenerSetAccepted(ls, false, "ListenerSet is not allowed by the Gateway's allowedListeners policy", gatewayv1.ListenerSetReasonNotAllowed)
-			setListenerSetProgrammed(ls, false, "ListenerSet is not allowed by the Gateway's allowedListeners policy", gatewayv1.ListenerSetReasonNotAllowed)
+			msg := "ListenerSet is not allowed by the Gateway's allowedListeners policy"
+			setListenerSetAccepted(ls, false, msg, gatewayv1.ListenerSetReasonNotAllowed)
+			setListenerSetProgrammed(ls, false, msg, gatewayv1.ListenerSetReasonNotAllowed)
 			if err := r.updateListenerSetStatus(ctx, original, ls); err != nil {
 				scopedLog.ErrorContext(ctx, "Unable to update ListenerSet status", logfields.Error, err)
 			}
@@ -524,14 +488,12 @@ func (r *gatewayReconciler) resolveAttachedListenerSets(ctx context.Context, sco
 		gw.Status.AttachedListenerSets = &attachedCount
 	}
 
-	return attachedSets
+	return attachedSets, nil
 }
 
-// namespaceResolver returns an ingestion.AllowedNamespacesResolver bound to
-// this reconciler's client and logger.
 func (r *gatewayReconciler) namespaceResolver(ctx context.Context, scopedLog *slog.Logger) ingestion.AllowedNamespacesResolver {
 	return func(listenerNamespace string, l gatewayv1.Listener) map[string]struct{} {
-		return resolveAllowedNamespaces(ctx, r.Client, listenerNamespace, l, scopedLog)
+		return resolveAllowedNamespacesForListener(ctx, r.Client, scopedLog, listenerNamespace, l)
 	}
 }
 
@@ -680,10 +642,6 @@ func (r *gatewayReconciler) verifyGatewayStaticAddresses(gw *gatewayv1.Gateway) 
 	}
 	return nil
 }
-
-// runCommonRouteChecks runs all the checks that are common across all supported Route types.
-//
-// Uses the helpers.Input interface to ensure that this still applies as new types are added.
 
 type listenerValidationParams struct {
 	sourceNamespace string

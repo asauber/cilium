@@ -64,7 +64,7 @@ type AllowedNamespacesResolver func(listenerNamespace string, l gatewayv1.Listen
 // same-namespace policy.
 func BuildListenersWithRoutes(
 	gw *gatewayv1.Gateway,
-	allowedSets []gatewayv1.ListenerSet,
+	allowedListenerSets []gatewayv1.ListenerSet,
 	httpRoutes []gatewayv1.HTTPRoute,
 	grpcRoutes []gatewayv1.GRPCRoute,
 	tlsRoutes []gatewayv1.TLSRoute,
@@ -90,8 +90,8 @@ func BuildListenersWithRoutes(
 		namespace: gw.GetNamespace(),
 		listeners: gw.Spec.Listeners,
 	})
-	for i := range allowedSets {
-		ls := &allowedSets[i]
+	for i := range allowedListenerSets {
+		ls := &allowedListenerSets[i]
 		lsSource := model.FullyQualifiedResource{
 			Name:      ls.GetName(),
 			Namespace: ls.GetNamespace(),
@@ -117,15 +117,15 @@ func BuildListenersWithRoutes(
 	bgCtx := context.TODO()
 	httpAttachable := make([]bool, len(httpRoutes))
 	for i := range httpRoutes {
-		httpAttachable[i] = helpers.IsParentAttachable(bgCtx, gw, &httpRoutes[i], httpRoutes[i].Status.Parents, allowedSets)
+		httpAttachable[i] = helpers.IsParentAttachable(bgCtx, gw, &httpRoutes[i], httpRoutes[i].Status.Parents, allowedListenerSets)
 	}
 	grpcAttachable := make([]bool, len(grpcRoutes))
 	for i := range grpcRoutes {
-		grpcAttachable[i] = helpers.IsParentAttachable(bgCtx, gw, &grpcRoutes[i], grpcRoutes[i].Status.Parents, allowedSets)
+		grpcAttachable[i] = helpers.IsParentAttachable(bgCtx, gw, &grpcRoutes[i], grpcRoutes[i].Status.Parents, allowedListenerSets)
 	}
 	tlsAttachable := make([]bool, len(tlsRoutes))
 	for i := range tlsRoutes {
-		tlsAttachable[i] = helpers.IsParentAttachable(bgCtx, gw, &tlsRoutes[i], tlsRoutes[i].Status.Parents, allowedSets)
+		tlsAttachable[i] = helpers.IsParentAttachable(bgCtx, gw, &tlsRoutes[i], tlsRoutes[i].Status.Parents, allowedListenerSets)
 	}
 
 	var merged []ListenerWithRoutes
