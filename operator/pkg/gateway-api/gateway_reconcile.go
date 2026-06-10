@@ -423,6 +423,37 @@ func (r *gatewayReconciler) updateStatus(ctx context.Context, original *gatewayv
 	return r.Client.Status().Update(ctx, new)
 }
 
+// countAttachedRoutes returns the total number of routes (HTTP + GRPC + TLS)
+// attached to the listener whose source and listener name match the given
+// values. listenersWithRoutes is the per-listener attachment built by
+// ingestion.BuildListenersWithRoutes; per-source matching is exact on Kind,
+// Name, and Namespace.
+func countAttachedRoutes(listenersWithRoutes []ingestion.ListenerWithRoutes, sourceKind, sourceName, sourceNamespace string, listenerName gatewayv1.SectionName) int32 {
+	for i := range listenersWithRoutes {
+		lwr := &listenersWithRoutes[i]
+		if lwr.Source.Kind != sourceKind ||
+			lwr.Source.Name != sourceName ||
+			lwr.Source.Namespace != sourceNamespace ||
+			lwr.Listener.Name != listenerName {
+			continue
+		}
+		return int32(len(lwr.HTTPRoutes) + len(lwr.GRPCRoutes) + len(lwr.TLSRoutes))
+	}
+	return 0
+}
+
+// uniqueAttachedHTTPRoutes returns the deduplicated union of HTTPRoutes
+// attached to any listener in listenersWithRoutes. Dedup key is the route's
+// namespace/name. The slice underlying the returned values is shared with the
+// input listeners; callers must not mutate route entries.
+func uniqueAttachedHTTPRoutes(listenersWithRoutes []ingestion.ListenerWithRoutes) []gatewayv1.HTTPRoute {
+	var all []gatewayv1.HTTPRoute
+	for i := range listenersWithRoutes {
+		all = append(all, listenersWithRoutes[i].HTTPRoutes...)
+	}
+	return dedupeByNamespacedName(all)
+}
+
 func (r *gatewayReconciler) updateListenerSetStatus(ctx context.Context, original *gatewayv1.ListenerSet, new *gatewayv1.ListenerSet) error {
 	oldStatus := original.Status.DeepCopy()
 	newStatus := new.Status.DeepCopy()
