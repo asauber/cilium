@@ -713,9 +713,8 @@ func Test_sectionNameMatched(t *testing.T) {
 		},
 	}
 	type args struct {
-		routeNamespace string
-		listener       *gatewayv1.Listener
-		refs           []gatewayv1.ParentReference
+		listener *gatewayv1.Listener
+		refs     []gatewayv1.ParentReference
 	}
 	tests := []struct {
 		name string
