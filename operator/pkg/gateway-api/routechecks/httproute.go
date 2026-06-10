@@ -108,7 +108,7 @@ func (h *HTTPRouteInput) GetHostnames() []gatewayv1.Hostname {
 
 func (h *HTTPRouteInput) GetListenerSource(parent gatewayv1.ParentReference) (ListenerSource, error) {
 	if h.gateways == nil {
-		h.gateways = make(map[gatewayv1.ParentReference]ListenerOwner)
+		h.gateways = make(map[gatewayv1.ParentReference]ListenerSource)
 	}
 
 	if owner, exists := h.gateways[parent]; exists {
