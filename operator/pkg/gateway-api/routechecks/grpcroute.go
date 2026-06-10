@@ -111,9 +111,9 @@ func (g *GRPCRouteInput) GetListenerSource(parent gatewayv1.ParentReference) (Li
 		return nil, fmt.Errorf("gateway %q does not exist: %w", parent.Name, err)
 	}
 
-	owner := &GatewayListenerOwner{Gateway: gw}
-	g.gateways[parent] = owner
-	return owner, nil
+	source := &GatewayListenerSource{Gateway: gw}
+	g.gateways[parent] = source
+	return source, nil
 }
 
 func (g *GRPCRouteInput) GetParentGammaService(parent gatewayv1.ParentReference) (*corev1.Service, error) {
