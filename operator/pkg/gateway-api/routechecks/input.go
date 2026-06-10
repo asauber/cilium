@@ -32,8 +32,8 @@ type ListenerSource interface {
 	IsListenerSet() bool
 }
 
-// GatewayListenerOwner wraps a Gateway to satisfy ListenerOwner.
-type GatewayListenerOwner struct {
+// GatewayListenerSource wraps a Gateway to satisfy ListenerSource.
+type GatewayListenerSource struct {
 	*gatewayv1.Gateway
 }
 
