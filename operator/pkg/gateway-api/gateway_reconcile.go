@@ -680,7 +680,7 @@ func (r *gatewayReconciler) validateListener(ctx context.Context, l gatewayv1.Li
 		invalidReason: gatewayv1.ListenerReasonInvalid,
 	}
 
-	allSupported := getSupportedRouteKinds(l.Protocol)
+	allSupported := helpers.GetSupportedRouteKinds(l.Protocol)
 	if allSupported == nil {
 		res.invalidMessages = append(res.invalidMessages, "Unsupported Listener Protocol.")
 		res.isValid = false
