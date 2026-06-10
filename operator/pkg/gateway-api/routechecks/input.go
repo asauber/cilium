@@ -53,8 +53,8 @@ type ListenerSetListenerSource struct {
 	Listeners []gatewayv1.Listener
 }
 
-func (l *ListenerSetListenerOwner) GetListeners() []gatewayv1.Listener {
-	return l.Listeners
+func (l *ListenerSetListenerSource) GetName() string {
+	return l.Name
 }
 
 func (l *ListenerSetListenerOwner) GetNamespace() string {
