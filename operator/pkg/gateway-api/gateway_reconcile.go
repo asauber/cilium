@@ -212,9 +212,19 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return controllerruntime.Fail(err)
 	}
 
-	httpRoutes := r.filterHTTPRoutesByGateway(ctx, gw, attachedListenerSets, httpRouteList.Items)
-	tlsRoutes := r.filterTLSRoutesByGateway(ctx, gw, attachedListenerSets, tlsRouteList.Items)
-	grpcRoutes := r.filterGRPCRoutesByGateway(ctx, gw, attachedListenerSets, grpcRouteList.Items)
+	// Build the set of listeners for this Gateway its ListenerSets with their
+	// attached Routes. This is the source of truth for allowed rout attachment.
+	listenersWithRoutes := ingestion.BuildListenersWithRoutes(
+		gw, attachedListenerSets,
+		allHTTPRoutes.Items, allGRPCRoutes.Items, allTLSRoutes.Items,
+		r.namespaceResolver(ctx, scopedLog),
+	)
+
+	// attachedHTTPRoutes is the deduplicated union of HTTPRoutes attached to
+	// any listener of this Gateway or its attached ListenerSets; used by
+	// BackendTLSPolicy status to identify policies that target backends used
+	// by routes rolling up to this Gateway.
+	attachedHTTPRoutes := uniqueAttachedHTTPRoutes(listenersWithRoutes)
 
 	if err := r.setBackendTLSPolicyStatuses(scopedLog, ctx, httpRoutes, btlspMap, req.NamespacedName); err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to update BackendTLSPolicy Status", logfields.Error, err)
