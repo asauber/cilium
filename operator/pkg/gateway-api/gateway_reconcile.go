@@ -1027,9 +1027,7 @@ func (r *gatewayReconciler) setListenerSetStatuses(
 	ctx context.Context,
 	gw *gatewayv1.Gateway,
 	attachedListenerSets []gatewayv1.ListenerSet,
-	httpRoutes *gatewayv1.HTTPRouteList,
-	tlsRoutes *gatewayv1.TLSRouteList,
-	grpcRoutes *gatewayv1.GRPCRouteList,
+	listenersWithRoutes []ingestion.ListenerWithRoutes,
 ) {
 	grants := &gatewayv1.ReferenceGrantList{}
 	if err := r.Client.List(ctx, grants); err != nil {
