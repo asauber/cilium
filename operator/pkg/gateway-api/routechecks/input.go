@@ -26,6 +26,10 @@ const (
 type ListenerSource interface {
 	GetName() string
 	GetNamespace() string
+	GetListeners() []gatewayv1.Listener
+	// IsListenerSet reports whether this source is a ListenerSet (true) or a
+	// Gateway (false). Used to discriminate parentRef kinds during matching.
+	IsListenerSet() bool
 }
 
 // GatewayListenerOwner wraps a Gateway to satisfy ListenerOwner.
