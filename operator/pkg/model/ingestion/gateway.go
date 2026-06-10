@@ -222,15 +222,37 @@ type Input struct {
 	Listeners []ListenerWithRoutes
 }
 
-// parentRefMatchesSource checks whether a route's parentRef targets the same
-// resource as the listener's source. A Gateway parentRef matches Gateway-sourced
-// listeners, and a ListenerSet parentRef matches only the specific ListenerSet.
-func parentRefMatchesSource(parent gatewayv1.ParentReference, source model.FullyQualifiedResource, routeNamespace string) bool {
-	parentKind := "Gateway"
-	if parent.Kind != nil {
-		parentKind = string(*parent.Kind)
-	}
-	if parentKind != source.Kind {
+// ListenerMatchesParentRef reports whether parent targets a specific listener
+// defined in the source identified by sourceKind/sourceName/sourceNamespace
+// ("source" = the Gateway or ListenerSet in which the listener is defined; not
+// to be confused with the route's parentRef). A match requires that:
+//   - parent's resolved Kind+Group identifies the source kind ("Gateway" or
+//     "ListenerSet")
+//   - parent.Name equals sourceName
+//   - parent.Namespace (defaulting to routeNamespace when unset) equals
+//     sourceNamespace
+//   - parent.SectionName is unset OR equals listenerName
+//   - parent.Port is unset OR equals listenerPort
+//
+// This is the canonical per-listener parentRef predicate. Callers in both the
+// ingestion path and the reconciler use it so the two stay consistent.
+func ListenerMatchesParentRef(
+	parent gatewayv1.ParentReference,
+	sourceKind, sourceName, sourceNamespace string,
+	listenerName gatewayv1.SectionName,
+	listenerPort gatewayv1.PortNumber,
+	routeNamespace string,
+) bool {
+	switch sourceKind {
+	case "Gateway":
+		if !helpers.IsGateway(parent) {
+			return false
+		}
+	case "ListenerSet":
+		if !helpers.IsListenerSet(parent) {
+			return false
+		}
+	default:
 		return false
 	}
 	if string(parent.Name) != source.Name {
