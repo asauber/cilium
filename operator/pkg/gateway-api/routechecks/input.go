@@ -50,6 +50,7 @@ func (g *GatewayListenerSource) IsListenerSet() bool {
 type ListenerSetListenerSource struct {
 	Name      string
 	Namespace string
+	Listeners []gatewayv1.Listener
 }
 
 func (l *ListenerSetListenerOwner) GetListeners() []gatewayv1.Listener {
