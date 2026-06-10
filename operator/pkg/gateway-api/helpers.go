@@ -163,43 +163,21 @@ func sortListenerSets(sets []gatewayv1.ListenerSet) {
 	})
 }
 
-// deduplicateHTTPRoutes removes duplicate HTTPRoutes based on namespace/name.
-func deduplicateHTTPRoutes(routes []gatewayv1.HTTPRoute) []gatewayv1.HTTPRoute {
-	seen := make(map[types.NamespacedName]struct{}, len(routes))
-	result := make([]gatewayv1.HTTPRoute, 0, len(routes))
-	for _, r := range routes {
-		key := types.NamespacedName{Namespace: r.Namespace, Name: r.Name}
-		if _, ok := seen[key]; !ok {
-			seen[key] = struct{}{}
-			result = append(result, r)
-		}
-	}
-	return result
-}
-
-// deduplicateGRPCRoutes removes duplicate GRPCRoutes based on namespace/name.
-func deduplicateGRPCRoutes(routes []gatewayv1.GRPCRoute) []gatewayv1.GRPCRoute {
-	seen := make(map[types.NamespacedName]struct{}, len(routes))
-	result := make([]gatewayv1.GRPCRoute, 0, len(routes))
-	for _, r := range routes {
-		key := types.NamespacedName{Namespace: r.Namespace, Name: r.Name}
-		if _, ok := seen[key]; !ok {
-			seen[key] = struct{}{}
-			result = append(result, r)
-		}
-	}
-	return result
-}
-
-// deduplicateTLSRoutes removes duplicate TLSRoutes based on namespace/name.
-func deduplicateTLSRoutes(routes []gatewayv1.TLSRoute) []gatewayv1.TLSRoute {
-	seen := make(map[types.NamespacedName]struct{}, len(routes))
-	result := make([]gatewayv1.TLSRoute, 0, len(routes))
-	for _, r := range routes {
-		key := types.NamespacedName{Namespace: r.Namespace, Name: r.Name}
-		if _, ok := seen[key]; !ok {
-			seen[key] = struct{}{}
-			result = append(result, r)
+// dedupeByNamespacedName returns items in input order with duplicates removed,
+// keyed by namespace/name. The first occurrence of each key wins. The element
+// type T must be such that *T implements metav1.Object (true for any
+// Kubernetes API value type that embeds metav1.ObjectMeta).
+func dedupeByNamespacedName[T any, PT interface {
+	*T
+	metav1.Object
+}](items []T) []T {
+	seen := make(map[types.NamespacedName]struct{}, len(items))
+	result := make([]T, 0, len(items))
+	for i := range items {
+		obj := PT(&items[i])
+		k := types.NamespacedName{Namespace: obj.GetNamespace(), Name: obj.GetName()}
+		if _, ok := seen[k]; ok {
+			continue
 		}
 	}
 	return result
