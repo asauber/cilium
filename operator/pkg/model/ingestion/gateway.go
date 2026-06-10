@@ -1316,7 +1316,7 @@ func toQueryMatch(match gatewayv1.HTTPRouteMatch) []model.KeyValueMatch {
 	return res
 }
 
-func toTLS(tls *gatewayv1.ListenerTLSConfig, grants []gatewayv1.ReferenceGrant, defaultNamespace string, ownerGVK schema.GroupVersionKind) []model.TLSSecret {
+func toTLS(tls *gatewayv1.ListenerTLSConfig, grants []gatewayv1.ReferenceGrant, defaultNamespace string, sourceGVK schema.GroupVersionKind) []model.TLSSecret {
 	if tls == nil {
 		return nil
 	}
