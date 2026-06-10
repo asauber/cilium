@@ -29,7 +29,7 @@ type TLSRouteInput struct {
 	TLSRoute       *gatewayv1.TLSRoute
 	ControllerName string
 
-	gateways map[gatewayv1.ParentReference]ListenerOwner
+	gateways map[gatewayv1.ParentReference]ListenerSource
 }
 
 func (t *TLSRouteInput) SetParentCondition(ref gatewayv1.ParentReference, condition metav1.Condition) {
