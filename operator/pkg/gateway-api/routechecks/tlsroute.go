@@ -119,8 +119,8 @@ func (t *TLSRouteInput) GetListenerSource(parent gatewayv1.ParentReference) (Lis
 		t.gateways = make(map[gatewayv1.ParentReference]ListenerSource)
 	}
 
-	if owner, exists := t.gateways[parent]; exists {
-		return owner, nil
+	if source, exists := t.gateways[parent]; exists {
+		return source, nil
 	}
 
 	ns := helpers.NamespaceDerefOr(parent.Namespace, t.GetNamespace())
