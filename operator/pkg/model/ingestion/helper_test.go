@@ -16,30 +16,14 @@ import (
 	k8syaml "sigs.k8s.io/yaml"
 )
 
-// MergedListenerFixture is a YAML-serializable representation of ListenerWithContext.
-type MergedListenerFixture struct {
-	Listener          gatewayv1.Listener           `json:"listener"`
-	Source            model.FullyQualifiedResource `json:"source"`
-	AllowedNamespaces []string                     `json:"allowedNamespaces,omitempty"`
-}
-
-// toMergedListeners converts YAML fixtures into ListenerWithContext slices.
-func toMergedListeners(fixtures []MergedListenerFixture) []ListenerWithContext {
-	var result []ListenerWithContext
-	for _, f := range fixtures {
-		lwc := ListenerWithContext{
-			Listener: f.Listener,
-			Source:   f.Source,
-		}
-		if len(f.AllowedNamespaces) > 0 {
-			lwc.AllowedNamespaces = make(map[string]struct{}, len(f.AllowedNamespaces))
-			for _, ns := range f.AllowedNamespaces {
-				lwc.AllowedNamespaces[ns] = struct{}{}
-			}
-		}
-		result = append(result, lwc)
-	}
-	return result
+// permissiveNamespaceResolver returns an AllowedNamespacesResolver that admits
+// routes from all namespaces. Ingestion tests do not exercise namespace policy:
+// that policy is implemented by the gateway-api reconciler's
+// resolveAllowedNamespaces and tested via the reconciler test suite, which
+// runs the real resolver against a fake Kubernetes client. Ingestion tests
+// focus on translation only.
+func permissiveNamespaceResolver() AllowedNamespacesResolver {
+	return func(string, gatewayv1.Listener) map[string]struct{} { return nil }
 }
 
 func readInput(t *testing.T, file string, obj any) {
