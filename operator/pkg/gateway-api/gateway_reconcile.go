@@ -154,10 +154,9 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		allGRPCRoutes.Items = append(allGRPCRoutes.Items, discovered.GRPCRoutes...)
 		allTLSRoutes.Items = append(allTLSRoutes.Items, discovered.TLSRoutes...)
 
-		// Deduplicate routes that may appear in both Gateway and ListenerSet indices
-		httpRouteList.Items = deduplicateHTTPRoutes(httpRouteList.Items)
-		grpcRouteList.Items = deduplicateGRPCRoutes(grpcRouteList.Items)
-		tlsRouteList.Items = deduplicateTLSRoutes(tlsRouteList.Items)
+		allHTTPRoutes.Items = dedupeByNamespacedName(allHTTPRoutes.Items)
+		allGRPCRoutes.Items = dedupeByNamespacedName(allGRPCRoutes.Items)
+		allTLSRoutes.Items = dedupeByNamespacedName(allTLSRoutes.Items)
 	}
 
 	btlspList := &gatewayv1.BackendTLSPolicyList{}
