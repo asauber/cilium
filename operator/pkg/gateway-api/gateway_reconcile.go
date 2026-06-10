@@ -486,7 +486,6 @@ func (r *gatewayReconciler) resolveAttachedListenerSets(ctx context.Context, sco
 	for i := range lsList.Items {
 		ls := &lsList.Items[i]
 		if !isListenerSetAllowed(ctx, r.Client, gw, ls, scopedLog) {
-			// Write rejected status on the ListenerSet
 			original := ls.DeepCopy()
 			setListenerSetAccepted(ls, false, "ListenerSet is not allowed by the Gateway's allowedListeners policy", gatewayv1.ListenerSetReasonNotAllowed)
 			setListenerSetProgrammed(ls, false, "ListenerSet is not allowed by the Gateway's allowedListeners policy", gatewayv1.ListenerSetReasonNotAllowed)
