@@ -1258,7 +1258,7 @@ func (r *gatewayReconciler) runListenerSetRouteChecks(input routechecks.Input, p
 		listeners = append(listeners, helpers.ListenerEntryToListener(entry))
 	}
 
-	// Create a wrapper input that returns our ListenerSet's listeners for GetListenerOwner calls
+	// Create a wrapper input that returns our ListenerSet's listeners for GetListenerSource calls
 	lsInput := &listenerSetRouteInput{
 		Input: input,
 		owner: &routechecks.ListenerSetListenerOwner{
