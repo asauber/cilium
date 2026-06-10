@@ -94,8 +94,8 @@ func (g *GRPCRouteInput) GetListenerSource(parent gatewayv1.ParentReference) (Li
 		g.gateways = make(map[gatewayv1.ParentReference]ListenerSource)
 	}
 
-	if owner, exists := g.gateways[parent]; exists {
-		return owner, nil
+	if source, exists := g.gateways[parent]; exists {
+		return source, nil
 	}
 
 	ns := helpers.NamespaceDerefOr(parent.Namespace, g.GetNamespace())
