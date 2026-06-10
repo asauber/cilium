@@ -1064,11 +1064,11 @@ func (r *gatewayReconciler) setListenerSetStatuses(
 			var supportedKinds []gatewayv1.RouteGroupKind
 			if !isConflicted {
 				res := r.validateListener(ctx, l, listenerValidationParams{
-					ownerNamespace: ls.Namespace,
-					ownerKind:      "ListenerSet",
-					generation:     ls.GetGeneration(),
-					grants:         grants.Items,
-					ownerRef:       client.ObjectKeyFromObject(ls).String(),
+					sourceNamespace: ls.Namespace,
+					sourceKind:      "ListenerSet",
+					generation:      ls.GetGeneration(),
+					grants:          grants.Items,
+					sourceRef:       client.ObjectKeyFromObject(ls).String(),
 				})
 				isValid := res.isValid
 				supportedKinds = res.supportedKinds
