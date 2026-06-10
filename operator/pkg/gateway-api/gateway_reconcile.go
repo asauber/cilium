@@ -1219,7 +1219,7 @@ func (r *gatewayReconciler) runGatewayRouteChecks(input routechecks.Input, paren
 
 	setInitialRouteConditions(input, parent)
 
-	if err := runCheckFuncs(input, parent, gatewayCheckFuncs, "Gateway"); err != nil {
+	if err := runCheckFuncs(input, parent, parentCheckFuncs, "Parent"); err != nil {
 		return err
 	}
 	return runCheckFuncs(input, parent, backendCheckFuncs, "Backend")
