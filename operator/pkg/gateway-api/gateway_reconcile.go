@@ -475,8 +475,9 @@ func (r *gatewayReconciler) resolveAttachedListenerSets(ctx context.Context, sco
 	if err := r.Client.List(ctx, lsList, &client.ListOptions{
 		FieldSelector: fields.OneTermEqualSelector(indexers.ListenerSetGatewayIndex, client.ObjectKeyFromObject(gw).String()),
 	}); err != nil {
-		scopedLog.ErrorContext(ctx, "Unable to list ListenerSets", logfields.Error, err)
-		return merged, nil
+		msg := "Unable to list ListenerSets"
+		scopedLog.ErrorContext(ctx, msg, logfields.Error, err)
+		return attachedSets, fmt.Errorf("%s: %w", msg, err)
 	}
 
 	sortListenerSets(lsList.Items)
