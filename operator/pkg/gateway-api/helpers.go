@@ -179,6 +179,8 @@ func dedupeByNamespacedName[T any, PT interface {
 		if _, ok := seen[k]; ok {
 			continue
 		}
+		seen[k] = struct{}{}
+		result = append(result, items[i])
 	}
 	return result
 }
