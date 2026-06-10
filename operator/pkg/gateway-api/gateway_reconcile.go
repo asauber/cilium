@@ -487,8 +487,9 @@ func (r *gatewayReconciler) resolveAttachedListenerSets(ctx context.Context, sco
 		ls := &lsList.Items[i]
 		if !isListenerSetAllowed(ctx, r.Client, gw, ls, scopedLog) {
 			original := ls.DeepCopy()
-			setListenerSetAccepted(ls, false, "ListenerSet is not allowed by the Gateway's allowedListeners policy", gatewayv1.ListenerSetReasonNotAllowed)
-			setListenerSetProgrammed(ls, false, "ListenerSet is not allowed by the Gateway's allowedListeners policy", gatewayv1.ListenerSetReasonNotAllowed)
+			msg := "ListenerSet is not allowed by the Gateway's allowedListeners policy"
+			setListenerSetAccepted(ls, false, msg, gatewayv1.ListenerSetReasonNotAllowed)
+			setListenerSetProgrammed(ls, false, msg, gatewayv1.ListenerSetReasonNotAllowed)
 			if err := r.updateListenerSetStatus(ctx, original, ls); err != nil {
 				scopedLog.ErrorContext(ctx, "Unable to update ListenerSet status", logfields.Error, err)
 			}
