@@ -29,7 +29,7 @@ type HTTPRouteInput struct {
 	HTTPRoute      *gatewayv1.HTTPRoute
 	ControllerName string
 
-	gateways      map[gatewayv1.ParentReference]ListenerOwner
+	gateways      map[gatewayv1.ParentReference]ListenerSource
 	gammaServices map[gatewayv1.ParentReference]*corev1.Service
 }
 
