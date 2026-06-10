@@ -139,7 +139,7 @@ func (t *TLSRouteInput) GetListenerSource(parent gatewayv1.ParentReference) (Lis
 	source := &GatewayListenerSource{Gateway: gw}
 	t.gateways[parent] = source
 
-	return owner, nil
+	return source, nil
 }
 
 func (t *TLSRouteInput) GetParentGammaService(parent gatewayv1.ParentReference) (*corev1.Service, error) {
