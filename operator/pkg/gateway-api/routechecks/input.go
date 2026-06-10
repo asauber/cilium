@@ -57,7 +57,7 @@ func (l *ListenerSetListenerSource) GetName() string {
 	return l.Name
 }
 
-func (l *ListenerSetListenerOwner) GetNamespace() string {
+func (l *ListenerSetListenerSource) GetNamespace() string {
 	return l.Namespace
 }
 
