@@ -464,28 +464,8 @@ func (r *gatewayReconciler) updateListenerSetStatus(ctx context.Context, origina
 	return r.Client.Status().Update(ctx, new)
 }
 
-// resolveAllowedListeners does each of the following:
-// * builds the merged listener list from the Gateway's own listeners and any attached ListenerSets
-// * sets ListenerSet status in the case that the ListenerSet is not allowed by the Gateway
-// * sets AttachedListenerSets on Gateway status
-// * returns both the merged listener list and a list of attached ListenerSets
-func (r *gatewayReconciler) resolveAllowedListeners(ctx context.Context, scopedLog *slog.Logger, gw *gatewayv1.Gateway) ([]ingestion.ListenerWithContext, []gatewayv1.ListenerSet) {
-	gwSource := model.FullyQualifiedResource{
-		Name:      gw.GetName(),
-		Namespace: gw.GetNamespace(),
-		Group:     gatewayv1.SchemeGroupVersion.Group,
-		Version:   gatewayv1.SchemeGroupVersion.Version,
-		Kind:      "Gateway",
-		UID:       string(gw.GetUID()),
-	}
-
-	var merged []ingestion.ListenerWithContext
-	for _, l := range gw.Spec.Listeners {
-		merged = append(merged, ingestion.ListenerWithContext{
-			Listener: l,
-			Source:   gwSource,
-		})
-	}
+func (r *gatewayReconciler) resolveAttachedListenerSets(ctx context.Context, scopedLog *slog.Logger, gw *gatewayv1.Gateway) ([]gatewayv1.ListenerSet, error) {
+	var attachedSets []gatewayv1.ListenerSet
 
 	if !helpers.HasListenerSetSupport(r.Client.Scheme()) {
 		return merged, nil
