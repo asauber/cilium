@@ -19,10 +19,12 @@ const (
 	controllerName = "io.cilium/gateway-controller"
 )
 
-// ListenerOwner provides the listeners and namespace needed by route check
-// functions. Both Gateway and ListenerSet parentRefs resolve to a ListenerOwner.
-type ListenerOwner interface {
-	GetListeners() []gatewayv1.Listener
+// ListenerSource provides the identity and listeners needed by route check
+// and route filter functions. The Gateway or ListenerSet referenced by a
+// parentRef resolves to a ListenerSource: it is the resource in which the
+// targeted listeners are defined.
+type ListenerSource interface {
+	GetName() string
 	GetNamespace() string
 }
 
