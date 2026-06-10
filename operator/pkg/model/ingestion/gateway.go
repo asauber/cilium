@@ -262,37 +262,8 @@ func ListenerMatchesParentRef(
 	if parent.Namespace != nil {
 		parentNS = string(*parent.Namespace)
 	}
-	return parentNS == source.Namespace
-}
-
-// routeAllowed checks whether a route is allowed to attach to this listener
-// based on its parentRef matching the listener's source (Gateway or
-// ListenerSet) and namespace policy. If a parentRef specifies a sectionName, it
-// only matches the listener with that exact name.
-func (l *ListenerWithContext) routeAllowed(parentRefs []gatewayv1.ParentReference, routeNamespace string) bool {
-	if l.AllowedNamespaces != nil {
-		if _, ok := l.AllowedNamespaces[routeNamespace]; !ok {
-			return false
-		}
-	}
-	for _, parent := range parentRefs {
-		if parentRefMatchesSource(parent, l.Source, routeNamespace) {
-			if parent.SectionName != nil && string(*parent.SectionName) != string(l.Listener.Name) {
-				// We didn't find a listener yet that matches the section name
-				continue
-			}
-			return true
-		}
-	}
-	return false
-}
-
-func (l *ListenerWithContext) FilterHTTPRoutes(routes []gatewayv1.HTTPRoute) []gatewayv1.HTTPRoute {
-	var filtered []gatewayv1.HTTPRoute
-	for _, r := range routes {
-		if l.routeAllowed(r.Spec.ParentRefs, r.GetNamespace()) {
-			filtered = append(filtered, r)
-		}
+	if parentNS != sourceNamespace {
+		return false
 	}
 	return filtered
 }
