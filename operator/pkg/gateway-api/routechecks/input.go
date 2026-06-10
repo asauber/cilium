@@ -37,7 +37,7 @@ type GatewayListenerSource struct {
 	*gatewayv1.Gateway
 }
 
-func (g *GatewayListenerOwner) GetListeners() []gatewayv1.Listener {
+func (g *GatewayListenerSource) GetListeners() []gatewayv1.Listener {
 	return g.Spec.Listeners
 }
 
