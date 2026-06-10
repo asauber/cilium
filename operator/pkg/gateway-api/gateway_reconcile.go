@@ -147,16 +147,8 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return r.handleReconcileErrorWithStatus(ctx, err, original, gw)
 	}
 
-			lsGRPCRoutes := &gatewayv1.GRPCRouteList{}
-			if err := r.Client.List(ctx, lsGRPCRoutes, &client.ListOptions{
-				FieldSelector: fields.OneTermEqualSelector(indexers.GRPCRouteListenerSetIndex, lsKey),
-			}); err != nil {
-				scopedLog.ErrorContext(ctx, "Unable to list GRPCRoutes for ListenerSet",
-					logfields.Error, err,
-					logfields.Resource, lsKey)
-			} else {
-				grpcRouteList.Items = append(grpcRouteList.Items, lsGRPCRoutes.Items...)
-			}
+	if helpers.HasListenerSetSupport(r.Client.Scheme()) {
+		discovered := r.discoverRoutesFromListenerSets(ctx, scopedLog, attachedListenerSets)
 
 			if helpers.HasTLSRouteSupport(r.Client.Scheme()) {
 				lsTLSRoutes := &gatewayv1.TLSRouteList{}
