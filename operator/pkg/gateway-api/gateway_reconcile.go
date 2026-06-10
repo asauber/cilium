@@ -659,11 +659,11 @@ func (r *gatewayReconciler) verifyGatewayStaticAddresses(gw *gatewayv1.Gateway) 
 }
 
 type listenerValidationParams struct {
-	ownerNamespace string
-	ownerKind      string
-	generation     int64
-	grants         []gatewayv1.ReferenceGrant
-	ownerRef       string
+	sourceNamespace string
+	sourceKind      string
+	generation      int64
+	grants          []gatewayv1.ReferenceGrant
+	sourceRef       string
 }
 
 type listenerValidationResult struct {
