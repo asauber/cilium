@@ -111,8 +111,8 @@ func (h *HTTPRouteInput) GetListenerSource(parent gatewayv1.ParentReference) (Li
 		h.gateways = make(map[gatewayv1.ParentReference]ListenerSource)
 	}
 
-	if owner, exists := h.gateways[parent]; exists {
-		return owner, nil
+	if source, exists := h.gateways[parent]; exists {
+		return source, nil
 	}
 
 	ns := helpers.NamespaceDerefOr(parent.Namespace, h.GetNamespace())
