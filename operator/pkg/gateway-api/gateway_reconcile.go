@@ -115,12 +115,8 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
-	// Build merged listener list from Gateway + attached ListenerSets.
-	// This must happen before route fetching so we know which ListenerSets to query.
-	mergedListeners, attachedListenerSets := r.resolveAllowedListeners(ctx, scopedLog, gw)
-
-	httpRouteList := &gatewayv1.HTTPRouteList{}
-	if err := r.Client.List(ctx, httpRouteList, &client.ListOptions{
+	allHTTPRoutes := &gatewayv1.HTTPRouteList{}
+	if err := r.Client.List(ctx, allHTTPRoutes, &client.ListOptions{
 		FieldSelector: fields.OneTermEqualSelector(indexers.GatewayHTTPRouteIndex, client.ObjectKeyFromObject(original).String()),
 	}); err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to list HTTPRoutes", logfields.Error, err)
