@@ -91,7 +91,7 @@ func (g *GRPCRouteInput) GetGrants() []gatewayv1.ReferenceGrant {
 
 func (g *GRPCRouteInput) GetListenerSource(parent gatewayv1.ParentReference) (ListenerSource, error) {
 	if g.gateways == nil {
-		g.gateways = make(map[gatewayv1.ParentReference]ListenerOwner)
+		g.gateways = make(map[gatewayv1.ParentReference]ListenerSource)
 	}
 
 	if owner, exists := g.gateways[parent]; exists {
