@@ -1264,6 +1264,7 @@ func (r *gatewayReconciler) runListenerSetRouteChecks(input routechecks.Input, p
 		source: &routechecks.ListenerSetListenerSource{
 			Name:      ls.GetName(),
 			Namespace: ls.GetNamespace(),
+			Listeners: listeners,
 		},
 	}
 
