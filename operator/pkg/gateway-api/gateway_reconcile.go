@@ -477,7 +477,7 @@ func (r *gatewayReconciler) resolveAttachedListenerSets(ctx context.Context, sco
 	}); err != nil {
 		msg := "Unable to list ListenerSets"
 		scopedLog.ErrorContext(ctx, msg, logfields.Error, err)
-		return attachedSets, fmt.Errorf(msg)
+		return attachedSets, fmt.Errorf("%s: %w", msg, err)
 	}
 
 	sortListenerSets(lsList.Items)

@@ -16,7 +16,6 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
-	"github.com/cilium/cilium/operator/pkg/model"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 )
 
@@ -82,65 +81,6 @@ func isAllowed(ctx context.Context, c client.Client, gw *gatewayv1.Gateway, rout
 		}
 	}
 	return false
-}
-
-// listenerisAllowed is a single listener check to see if a route and listerner are valid.
-// listenerNamespace is the namespace of the listener's source (Gateway or ListenerSet).
-func listenerisAllowed(ctx context.Context, c client.Client, listenerNamespace string, listener *gatewayv1.Listener, route metav1.Object, logger *slog.Logger) bool {
-	// all routes in the same namespace are allowed for this listener
-	if listener.AllowedRoutes == nil || listener.AllowedRoutes.Namespaces == nil {
-		return route.GetNamespace() == listenerNamespace
-	}
-
-	// check if route is kind-allowed
-	if !helpers.IsKindAllowed(*listener, route) {
-		return false
-	}
-	// check if route is namespace-allowed
-	switch *listener.AllowedRoutes.Namespaces.From {
-	case gatewayv1.NamespacesFromAll:
-		return true
-	case gatewayv1.NamespacesFromSame:
-		if route.GetNamespace() == listenerNamespace {
-			return true
-		}
-		return false
-	case gatewayv1.NamespacesFromSelector:
-		nsList := &corev1.NamespaceList{}
-		selector, _ := metav1.LabelSelectorAsSelector(listener.AllowedRoutes.Namespaces.Selector)
-		if err := c.List(ctx, nsList, client.MatchingLabelsSelector{Selector: selector}); err != nil {
-			logger.ErrorContext(ctx, "Unable to list namespaces", logfields.Error, err)
-			return false
-		}
-
-		for _, ns := range nsList.Items {
-			if ns.Name == route.GetNamespace() {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func computeHosts[T ~string](gw *gatewayv1.Gateway, hostnames []T, excludeHostNames []T) []string {
-	hosts := make([]string, 0, len(hostnames))
-	for _, listener := range gw.Spec.Listeners {
-		hosts = append(hosts, computeHostsForListener(&listener, hostnames, excludeHostNames)...)
-	}
-
-	return hosts
-}
-
-func computeHostsForListener[T ~string](listener *gatewayv1.Listener, hostnames []T, excludeHostNames []T) []string {
-	return model.ComputeHosts(toStringSlice(hostnames), (*string)(listener.Hostname), toStringSlice(excludeHostNames))
-}
-
-func toStringSlice[T ~string](s []T) []string {
-	res := make([]string, 0, len(s))
-	for _, h := range s {
-		res = append(res, string(h))
-	}
-	return res
 }
 
 func mergeMap(left, right map[string]string) map[string]string {
