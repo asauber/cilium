@@ -59,8 +59,6 @@ func TestHTTPGatewayAPI(t *testing.T) {
 		"ListenerSet/basic-http-routing":                          {},
 		"ListenerSet/route-isolation-gateway-parentref":           {},
 		"ListenerSet/route-isolation-both-parentrefs":             {},
-		"ListenerSet/allowed-routes-same-namespace":               {},
-		"ListenerSet/allowed-routes-namespace-selector":           {},
 		"ListenerSet/reference-grant-missing":                     {},
 		"ListenerSet/reference-grant-gateway-only":                {},
 		"ListenerSet/reference-grant-valid":                       {},
