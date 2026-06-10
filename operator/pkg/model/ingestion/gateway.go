@@ -1323,7 +1323,7 @@ func toTLS(tls *gatewayv1.ListenerTLSConfig, grants []gatewayv1.ReferenceGrant, 
 
 	res := make([]model.TLSSecret, 0, len(tls.CertificateRefs))
 	for _, cert := range tls.CertificateRefs {
-		if !helpers.IsSecretReferenceAllowed(defaultNamespace, cert, ownerGVK, grants) {
+		if !helpers.IsSecretReferenceAllowed(defaultNamespace, cert, sourceGVK, grants) {
 			// not allowed to be referred to, skipping
 			continue
 		}
