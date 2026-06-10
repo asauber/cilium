@@ -116,7 +116,7 @@ func (t *TLSRouteInput) GetHostnames() []gatewayv1.Hostname {
 
 func (t *TLSRouteInput) GetListenerSource(parent gatewayv1.ParentReference) (ListenerSource, error) {
 	if t.gateways == nil {
-		t.gateways = make(map[gatewayv1.ParentReference]ListenerOwner)
+		t.gateways = make(map[gatewayv1.ParentReference]ListenerSource)
 	}
 
 	if owner, exists := t.gateways[parent]; exists {
