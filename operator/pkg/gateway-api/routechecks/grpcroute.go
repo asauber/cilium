@@ -32,7 +32,7 @@ type GRPCRouteInput struct {
 	GRPCRoute      *gatewayv1.GRPCRoute
 	ControllerName string
 
-	gateways      map[gatewayv1.ParentReference]ListenerOwner
+	gateways      map[gatewayv1.ParentReference]ListenerSource
 	gammaServices map[gatewayv1.ParentReference]*corev1.Service
 }
 
