@@ -228,11 +228,19 @@ func readGatewayInput(t *testing.T, testName string) Input {
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-serviceimport.yaml"), &input.ServiceImports)
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-referencegrant.yaml"), &input.ReferenceGrants)
 
-	var mergedFixtures []MergedListenerFixture
-	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-mergedlisteners.yaml"), &mergedFixtures)
-	if len(mergedFixtures) > 0 {
-		input.MergedListeners = toMergedListeners(mergedFixtures)
-	}
+	var listenerSets []gatewayv1.ListenerSet
+	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-listenersets.yaml"), &listenerSets)
+
+	// Build per-listener route attachments using the canonical builder that the
+	// reconciler also uses. Namespace policy is enforced by the reconciler's
+	// resolveAllowedNamespaces in production and tested in the reconciler test
+	// suite; ingestion tests are about translation and use a permissive
+	// resolver.
+	input.Listeners = BuildListenersWithRoutes(
+		&input.Gateway, listenerSets,
+		httpRoutes, grpcRoutes, tlsRoutes,
+		permissiveNamespaceResolver(),
+	)
 
 	btlspMapFixture := &BackendTLSPolicyMapFixture{}
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-backendtlspolicy.yaml"), btlspMapFixture)
