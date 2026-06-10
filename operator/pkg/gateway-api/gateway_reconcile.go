@@ -727,7 +727,7 @@ func (r *gatewayReconciler) validateListener(ctx context.Context, l gatewayv1.Li
 				break
 			}
 
-			if !helpers.IsSecretReferenceAllowed(params.ownerNamespace, cert, ownerGVK, params.grants) {
+			if !helpers.IsSecretReferenceAllowed(params.sourceNamespace, cert, sourceGVK, params.grants) {
 				res.conds = merge(res.conds, metav1.Condition{
 					Type:               string(gatewayv1.ListenerConditionResolvedRefs),
 					Status:             metav1.ConditionFalse,
