@@ -83,7 +83,7 @@ func listenerReferencesSecret(tls *gatewayv1.ListenerTLSConfig, sourceNamespace 
 		if !IsSecret(cert) {
 			continue
 		}
-		ns := NamespaceDerefOr(cert.Namespace, ownerNamespace)
+		ns := NamespaceDerefOr(cert.Namespace, sourceNamespace)
 		if string(cert.Name) == secret.GetName() && ns == secret.GetNamespace() {
 			return true
 		}
