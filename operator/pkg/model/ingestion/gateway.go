@@ -304,24 +304,7 @@ func GatewayAPI(log *slog.Logger, input Input) ([]model.HTTPListener, []model.TL
 		}
 	}
 
-	listeners := input.MergedListeners
-	if listeners == nil {
-		// If MergedListeners is not provided, build it from the direct listeners
-		gwSource := model.FullyQualifiedResource{
-			Name:      input.Gateway.GetName(),
-			Namespace: input.Gateway.GetNamespace(),
-			Group:     gatewayv1.SchemeGroupVersion.Group,
-			Version:   gatewayv1.SchemeGroupVersion.Version,
-			Kind:      "Gateway",
-			UID:       string(input.Gateway.GetUID()),
-		}
-		for _, l := range input.Gateway.Spec.Listeners {
-			listeners = append(listeners, ListenerWithContext{
-				Listener: l,
-				Source:   gwSource,
-			})
-		}
-	}
+	listeners := input.Listeners
 
 	// Find all the listener host names, so that we can match them with the routes
 	// Gateway API spec guarantees that the hostnames are unique across all listeners
