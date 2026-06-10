@@ -468,7 +468,7 @@ func (r *gatewayReconciler) resolveAttachedListenerSets(ctx context.Context, sco
 	var attachedSets []gatewayv1.ListenerSet
 
 	if !helpers.HasListenerSetSupport(r.Client.Scheme()) {
-		return merged, nil
+		return attachedSets, nil
 	}
 
 	lsList := &gatewayv1.ListenerSetList{}
