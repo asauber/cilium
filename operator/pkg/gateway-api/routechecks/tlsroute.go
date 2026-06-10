@@ -114,7 +114,7 @@ func (t *TLSRouteInput) GetHostnames() []gatewayv1.Hostname {
 	return t.TLSRoute.Spec.Hostnames
 }
 
-func (t *TLSRouteInput) GetListenerOwner(parent gatewayv1.ParentReference) (ListenerOwner, error) {
+func (t *TLSRouteInput) GetListenerSource(parent gatewayv1.ParentReference) (ListenerSource, error) {
 	if t.gateways == nil {
 		t.gateways = make(map[gatewayv1.ParentReference]ListenerOwner)
 	}
