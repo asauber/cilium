@@ -265,15 +265,8 @@ func ListenerMatchesParentRef(
 	if parentNS != sourceNamespace {
 		return false
 	}
-	return filtered
-}
-
-func (l *ListenerWithContext) FilterGRPCRoutes(routes []gatewayv1.GRPCRoute) []gatewayv1.GRPCRoute {
-	var filtered []gatewayv1.GRPCRoute
-	for _, r := range routes {
-		if l.routeAllowed(r.Spec.ParentRefs, r.GetNamespace()) {
-			filtered = append(filtered, r)
-		}
+	if parent.SectionName != nil && *parent.SectionName != listenerName {
+		return false
 	}
 	return filtered
 }
