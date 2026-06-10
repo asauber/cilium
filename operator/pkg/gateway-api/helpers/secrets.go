@@ -75,7 +75,7 @@ func GetGatewaysForSecret(ctx context.Context, c client.Client, obj client.Objec
 }
 
 // listenerReferencesSecret checks if a listener's TLS config references the given secret.
-func listenerReferencesSecret(tls *gatewayv1.ListenerTLSConfig, ownerNamespace string, secret client.Object) bool {
+func listenerReferencesSecret(tls *gatewayv1.ListenerTLSConfig, sourceNamespace string, secret client.Object) bool {
 	if tls == nil {
 		return false
 	}
