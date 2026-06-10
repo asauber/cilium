@@ -150,19 +150,9 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if helpers.HasListenerSetSupport(r.Client.Scheme()) {
 		discovered := r.discoverRoutesFromListenerSets(ctx, scopedLog, attachedListenerSets)
 
-			if helpers.HasTLSRouteSupport(r.Client.Scheme()) {
-				lsTLSRoutes := &gatewayv1.TLSRouteList{}
-				if err := r.Client.List(ctx, lsTLSRoutes, &client.ListOptions{
-					FieldSelector: fields.OneTermEqualSelector(indexers.TLSRouteListenerSetIndex, lsKey),
-				}); err != nil {
-					scopedLog.ErrorContext(ctx, "Unable to list TLSRoutes for ListenerSet",
-						logfields.Error, err,
-						logfields.Resource, lsKey)
-				} else {
-					tlsRouteList.Items = append(tlsRouteList.Items, lsTLSRoutes.Items...)
-				}
-			}
-		}
+		allHTTPRoutes.Items = append(allHTTPRoutes.Items, discovered.HTTPRoutes...)
+		allGRPCRoutes.Items = append(allGRPCRoutes.Items, discovered.GRPCRoutes...)
+		allTLSRoutes.Items = append(allTLSRoutes.Items, discovered.TLSRoutes...)
 
 		// Deduplicate routes that may appear in both Gateway and ListenerSet indices
 		httpRouteList.Items = deduplicateHTTPRoutes(httpRouteList.Items)
