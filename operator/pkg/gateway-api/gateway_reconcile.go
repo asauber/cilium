@@ -791,11 +791,11 @@ func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1
 	oneValidListener := false
 	for _, l := range gw.Spec.Listeners {
 		res := r.validateListener(ctx, l, listenerValidationParams{
-			ownerNamespace: gw.Namespace,
-			ownerKind:      "Gateway",
-			generation:     gw.GetGeneration(),
-			grants:         grants.Items,
-			ownerRef:       client.ObjectKeyFromObject(gw).String(),
+			sourceNamespace: gw.Namespace,
+			sourceKind:      "Gateway",
+			generation:      gw.GetGeneration(),
+			grants:          grants.Items,
+			sourceRef:       client.ObjectKeyFromObject(gw).String(),
 		})
 
 		conds := res.conds
