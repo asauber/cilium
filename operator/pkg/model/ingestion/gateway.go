@@ -326,9 +326,6 @@ func GatewayAPI(log *slog.Logger, input Input) ([]model.HTTPListener, []model.TL
 			continue
 		}
 
-		filteredHTTPRoutes := l.FilterHTTPRoutes(input.HTTPRoutes)
-		filteredGRPCRoutes := l.FilterGRPCRoutes(input.GRPCRoutes)
-
 		var httpRoutes []model.HTTPRoute
 		httpRoutes = append(httpRoutes, toHTTPRoutes(log, l.Listener, listenerHostnamesByProtocol, filteredHTTPRoutes, input.Services, input.ServiceImports, input.ReferenceGrants, input.BackendTLSPolicyMap)...)
 		httpRoutes = append(httpRoutes, toGRPCRoutes(l.Listener, listenerHostnamesByProtocol, filteredGRPCRoutes, input.Services, input.ServiceImports, input.ReferenceGrants)...)
