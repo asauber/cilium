@@ -271,7 +271,7 @@ func ListenerMatchesParentRef(
 	if parent.Port != nil && *parent.Port != listenerPort {
 		return false
 	}
-	return filtered
+	return true
 }
 
 // GatewayAPI translates Gateway API resources into a model.
