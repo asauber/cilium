@@ -1268,7 +1268,7 @@ func (r *gatewayReconciler) runListenerSetRouteChecks(input routechecks.Input, p
 		},
 	}
 
-	if err := runCheckFuncs(lsInput, parent, gatewayCheckFuncs, "Gateway for ListenerSet"); err != nil {
+	if err := runCheckFuncs(lsInput, parent, parentCheckFuncs, "Parent (ListenerSet)"); err != nil {
 		return err
 	}
 	return runCheckFuncs(input, parent, backendCheckFuncs, "Backend for ListenerSet")
