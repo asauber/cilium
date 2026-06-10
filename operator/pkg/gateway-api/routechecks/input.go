@@ -61,6 +61,14 @@ func (l *ListenerSetListenerSource) GetNamespace() string {
 	return l.Namespace
 }
 
+func (l *ListenerSetListenerSource) GetListeners() []gatewayv1.Listener {
+	return l.Listeners
+}
+
+func (l *ListenerSetListenerSource) IsListenerSet() bool {
+	return true
+}
+
 type GenericRule interface {
 	GetBackendRefs() []gatewayv1.BackendRef
 }
