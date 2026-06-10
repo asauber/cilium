@@ -658,10 +658,6 @@ func (r *gatewayReconciler) verifyGatewayStaticAddresses(gw *gatewayv1.Gateway) 
 	return nil
 }
 
-// runCommonRouteChecks runs all the checks that are common across all supported Route types.
-//
-// Uses the helpers.Input interface to ensure that this still applies as new types are added.
-
 type listenerValidationParams struct {
 	ownerNamespace string
 	ownerKind      string
