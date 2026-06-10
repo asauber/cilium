@@ -741,7 +741,7 @@ func (r *gatewayReconciler) validateListener(ctx context.Context, l gatewayv1.Li
 				break
 			}
 
-			if err := validateTLSSecret(ctx, r.Client, helpers.NamespaceDerefOr(cert.Namespace, params.ownerNamespace), string(cert.Name)); err != nil {
+			if err := validateTLSSecret(ctx, r.Client, helpers.NamespaceDerefOr(cert.Namespace, params.sourceNamespace), string(cert.Name)); err != nil {
 				r.logger.InfoContext(ctx, "Found an invalid TLS Secret",
 					logfields.Error, err.Error(),
 					logfields.Resource, params.ownerRef)
