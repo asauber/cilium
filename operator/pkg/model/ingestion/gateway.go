@@ -255,7 +255,7 @@ func ListenerMatchesParentRef(
 	default:
 		return false
 	}
-	if string(parent.Name) != source.Name {
+	if string(parent.Name) != sourceName {
 		return false
 	}
 	parentNS := routeNamespace
