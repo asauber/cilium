@@ -502,7 +502,14 @@ func (r *gatewayReconciler) resolveAttachedListenerSets(ctx context.Context, sco
 	if attachedCount > 0 {
 		gw.Status.AttachedListenerSets = &attachedCount
 	}
-	return merged, attachedSets
+
+	return attachedSets, nil
+}
+
+func (r *gatewayReconciler) namespaceResolver(ctx context.Context, scopedLog *slog.Logger) ingestion.AllowedNamespacesResolver {
+	return func(listenerNamespace string, l gatewayv1.Listener) map[string]struct{} {
+		return resolveAllowedNamespacesForListener(ctx, r.Client, scopedLog, listenerNamespace, l)
+	}
 }
 
 // getGatewayClassConfig returns the CiliumGatewayClassConfig referenced by the GatewayClass.
