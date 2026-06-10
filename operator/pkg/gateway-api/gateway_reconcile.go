@@ -1089,11 +1089,7 @@ func (r *gatewayReconciler) setListenerSetStatuses(
 			}
 
 			// Count attached routes for this listener
-			lsSource := listenerSetFQR(ls)
-			var attachedRoutes int32
-			attachedRoutes += int32(len(r.filterHTTPRoutesByListener(ctx, gw, &l, &lsSource, httpRoutes.Items, *ls)))
-			attachedRoutes += int32(len(r.filterGRPCRoutesByListener(ctx, gw, &l, &lsSource, grpcRoutes.Items, *ls)))
-			attachedRoutes += int32(len(r.filterTLSRoutesByListener(ctx, gw, &l, &lsSource, tlsRoutes.Items, *ls)))
+			attachedRoutes := countAttachedRoutes(listenersWithRoutes, "ListenerSet", ls.GetName(), ls.GetNamespace(), l.Name)
 
 			listenerStatuses = append(listenerStatuses, gatewayv1.ListenerEntryStatus{
 				Name:           entry.Name,
