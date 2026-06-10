@@ -1252,7 +1252,7 @@ func (r *gatewayReconciler) runListenerSetRouteChecks(input routechecks.Input, p
 
 	setInitialRouteConditions(input, parent)
 
-	// Build a ListenerOwner with the ListenerSet's listeners for checks.
+	// Build a ListenerSource with the ListenerSet's listeners for checks.
 	var listeners []gatewayv1.Listener
 	for _, entry := range ls.Spec.Listeners {
 		listeners = append(listeners, helpers.ListenerEntryToListener(entry))
