@@ -30,10 +30,11 @@ const (
 	allHosts = "*"
 )
 
-// ListenerWithContext wraps a Listener with ownership context from its source
-// resource (Gateway or ListenerSet). This enables correct ReferenceGrant
-// checks, source attribution, and route attachment.
-type ListenerWithContext struct {
+// ListenerWithRoutes wraps a Listener with the source resource that defines
+// it (Gateway or ListenerSet) and the per-route slices that have been
+// determined to attach to this listener. Routes are filtered per listener by
+// BuildListenersWithRoutes; ingestion treats them as authoritative.
+type ListenerWithRoutes struct {
 	gatewayv1.Listener
 	// Source identifies the resource that defines this listener.
 	Source model.FullyQualifiedResource
