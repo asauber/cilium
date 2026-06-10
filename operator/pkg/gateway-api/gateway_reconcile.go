@@ -483,7 +483,6 @@ func (r *gatewayReconciler) resolveAttachedListenerSets(ctx context.Context, sco
 	sortListenerSets(lsList.Items)
 
 	var attachedCount int32
-	var attachedSets []gatewayv1.ListenerSet
 	for i := range lsList.Items {
 		ls := &lsList.Items[i]
 		if !isListenerSetAllowed(ctx, r.Client, gw, ls, scopedLog) {
