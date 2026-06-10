@@ -128,8 +128,8 @@ func (h *HTTPRouteInput) GetListenerSource(parent gatewayv1.ParentReference) (Li
 		return nil, fmt.Errorf("gateway %q does not exist: %w", parent.Name, err)
 	}
 
-	owner := &GatewayListenerOwner{Gateway: gw}
-	h.gateways[parent] = owner
+	source := &GatewayListenerSource{Gateway: gw}
+	h.gateways[parent] = source
 
 	return owner, nil
 }
