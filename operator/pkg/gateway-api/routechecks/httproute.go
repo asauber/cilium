@@ -106,7 +106,7 @@ func (h *HTTPRouteInput) GetHostnames() []gatewayv1.Hostname {
 	return h.HTTPRoute.Spec.Hostnames
 }
 
-func (h *HTTPRouteInput) GetListenerOwner(parent gatewayv1.ParentReference) (ListenerOwner, error) {
+func (h *HTTPRouteInput) GetListenerSource(parent gatewayv1.ParentReference) (ListenerSource, error) {
 	if h.gateways == nil {
 		h.gateways = make(map[gatewayv1.ParentReference]ListenerOwner)
 	}
