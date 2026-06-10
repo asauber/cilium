@@ -141,21 +141,11 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
-	// Also fetch Routes targeting attached ListenerSets
-	if helpers.HasListenerSetSupport(r.Client.Scheme()) {
-		for _, ls := range attachedListenerSets {
-			lsKey := client.ObjectKeyFromObject(&ls).String()
-
-			lsHTTPRoutes := &gatewayv1.HTTPRouteList{}
-			if err := r.Client.List(ctx, lsHTTPRoutes, &client.ListOptions{
-				FieldSelector: fields.OneTermEqualSelector(indexers.HTTPRouteListenerSetIndex, lsKey),
-			}); err != nil {
-				scopedLog.ErrorContext(ctx, "Unable to list HTTPRoutes for ListenerSet",
-					logfields.Error, err,
-					logfields.Resource, lsKey)
-			} else {
-				httpRouteList.Items = append(httpRouteList.Items, lsHTTPRoutes.Items...)
-			}
+	attachedListenerSets, err := r.resolveAttachedListenerSets(ctx, scopedLog, gw)
+	if err != nil {
+		scopedLog.ErrorContext(ctx, err.Error(), logfields.Error, err)
+		return r.handleReconcileErrorWithStatus(ctx, err, original, gw)
+	}
 
 			lsGRPCRoutes := &gatewayv1.GRPCRouteList{}
 			if err := r.Client.List(ctx, lsGRPCRoutes, &client.ListOptions{
