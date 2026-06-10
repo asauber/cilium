@@ -14,8 +14,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	k8syaml "sigs.k8s.io/yaml"
-
-	"github.com/cilium/cilium/operator/pkg/model"
 )
 
 // MergedListenerFixture is a YAML-serializable representation of ListenerWithContext.
