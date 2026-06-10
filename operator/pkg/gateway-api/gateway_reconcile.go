@@ -497,16 +497,6 @@ func (r *gatewayReconciler) resolveAttachedListenerSets(ctx context.Context, sco
 		}
 		attachedCount++
 		attachedSets = append(attachedSets, *ls)
-
-		lsSource := listenerSetFQR(ls)
-		for _, entry := range ls.Spec.Listeners {
-			listener := helpers.ListenerEntryToListener(entry)
-			merged = append(merged, ingestion.ListenerWithContext{
-				Listener:          listener,
-				Source:            lsSource,
-				AllowedNamespaces: resolveAllowedNamespaces(ctx, r.Client, ls.GetNamespace(), listener, scopedLog),
-			})
-		}
 	}
 
 	if attachedCount > 0 {
