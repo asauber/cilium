@@ -38,9 +38,168 @@ type ListenerWithRoutes struct {
 	gatewayv1.Listener
 	// Source identifies the resource that defines this listener.
 	Source model.FullyQualifiedResource
-	// AllowedNamespaces is the set of namespaces from which routes may attach
-	// to this listener. If nil, all namespaces are allowed.
-	AllowedNamespaces map[string]struct{}
+	// HTTPRoutes, GRPCRoutes, TLSRoutes are the routes (by reference into
+	// caller-owned slices) that have been determined to attach to this listener.
+	HTTPRoutes []gatewayv1.HTTPRoute
+	GRPCRoutes []gatewayv1.GRPCRoute
+	TLSRoutes  []gatewayv1.TLSRoute
+}
+
+// AllowedNamespacesResolver returns the set of namespaces from which routes
+// may attach to the given listener, whose defining resource (Gateway or
+// ListenerSet) sits in listenerNamespace. A nil return means routes from all
+// namespaces are allowed. Used by BuildListenersWithRoutes to delegate
+// selector evaluation to callers that hold a Kubernetes client.
+type AllowedNamespacesResolver func(listenerNamespace string, l gatewayv1.Listener) map[string]struct{}
+
+// BuildListenersWithRoutes merges the Gateway's own listeners with listeners
+// from allowedSets and, for each merged listener, computes the subset of
+// HTTPRoutes/GRPCRoutes/TLSRoutes that attach to it. This is the canonical
+// per-listener route attachment routine; the reconciler and ingestion tests
+// both call it to populate ingestion.Input.
+//
+// resolveAllowed, when non-nil, is invoked per listener to compute the set of
+// namespaces from which routes may attach. A nil resolver defaults to
+// same-namespace policy.
+func BuildListenersWithRoutes(
+	gw *gatewayv1.Gateway,
+	allowedListenerSets []gatewayv1.ListenerSet,
+	httpRoutes []gatewayv1.HTTPRoute,
+	grpcRoutes []gatewayv1.GRPCRoute,
+	tlsRoutes []gatewayv1.TLSRoute,
+	resolveAllowed AllowedNamespacesResolver,
+) []ListenerWithRoutes {
+	type sourceListeners struct {
+		source    model.FullyQualifiedResource
+		namespace string
+		listeners []gatewayv1.Listener
+	}
+	var sources []sourceListeners
+
+	gwSource := model.FullyQualifiedResource{
+		Name:      gw.GetName(),
+		Namespace: gw.GetNamespace(),
+		Group:     gatewayv1.SchemeGroupVersion.Group,
+		Version:   gatewayv1.SchemeGroupVersion.Version,
+		Kind:      "Gateway",
+		UID:       string(gw.GetUID()),
+	}
+	sources = append(sources, sourceListeners{
+		source:    gwSource,
+		namespace: gw.GetNamespace(),
+		listeners: gw.Spec.Listeners,
+	})
+	for i := range allowedListenerSets {
+		ls := &allowedListenerSets[i]
+		lsSource := model.FullyQualifiedResource{
+			Name:      ls.GetName(),
+			Namespace: ls.GetNamespace(),
+			Group:     gatewayv1.SchemeGroupVersion.Group,
+			Version:   gatewayv1.SchemeGroupVersion.Version,
+			Kind:      "ListenerSet",
+			UID:       string(ls.GetUID()),
+		}
+		converted := make([]gatewayv1.Listener, 0, len(ls.Spec.Listeners))
+		for _, entry := range ls.Spec.Listeners {
+			converted = append(converted, helpers.ListenerEntryToListener(entry))
+		}
+		sources = append(sources, sourceListeners{
+			source:    lsSource,
+			namespace: ls.GetNamespace(),
+			listeners: converted,
+		})
+	}
+
+	// Precompute which routes are accepted by gw or any attached ListenerSet.
+	// This check is route-wide (not per-listener), so do it once per route.
+	// IsParentAttachable's context parameter is unused; pass a placeholder.
+	bgCtx := context.TODO()
+	httpAttachable := make([]bool, len(httpRoutes))
+	for i := range httpRoutes {
+		httpAttachable[i] = helpers.IsParentAttachable(bgCtx, gw, &httpRoutes[i], httpRoutes[i].Status.Parents, allowedListenerSets)
+	}
+	grpcAttachable := make([]bool, len(grpcRoutes))
+	for i := range grpcRoutes {
+		grpcAttachable[i] = helpers.IsParentAttachable(bgCtx, gw, &grpcRoutes[i], grpcRoutes[i].Status.Parents, allowedListenerSets)
+	}
+	tlsAttachable := make([]bool, len(tlsRoutes))
+	for i := range tlsRoutes {
+		tlsAttachable[i] = helpers.IsParentAttachable(bgCtx, gw, &tlsRoutes[i], tlsRoutes[i].Status.Parents, allowedListenerSets)
+	}
+
+	var merged []ListenerWithRoutes
+	for _, src := range sources {
+		for _, l := range src.listeners {
+			var allowedNS map[string]struct{}
+			if resolveAllowed != nil {
+				allowedNS = resolveAllowed(src.namespace, l)
+			} else {
+				allowedNS = map[string]struct{}{src.namespace: {}}
+			}
+
+			lwr := ListenerWithRoutes{
+				Listener: l,
+				Source:   src.source,
+			}
+			for i := range httpRoutes {
+				if httpAttachable[i] && listenerAttachesRoute(&l, src.source, allowedNS, &httpRoutes[i], httpRoutes[i].Spec.ParentRefs, httpRoutes[i].Spec.Hostnames) {
+					lwr.HTTPRoutes = append(lwr.HTTPRoutes, httpRoutes[i])
+				}
+			}
+			for i := range grpcRoutes {
+				if grpcAttachable[i] && listenerAttachesRoute(&l, src.source, allowedNS, &grpcRoutes[i], grpcRoutes[i].Spec.ParentRefs, grpcRoutes[i].Spec.Hostnames) {
+					lwr.GRPCRoutes = append(lwr.GRPCRoutes, grpcRoutes[i])
+				}
+			}
+			for i := range tlsRoutes {
+				if tlsAttachable[i] && listenerAttachesRoute(&l, src.source, allowedNS, &tlsRoutes[i], tlsRoutes[i].Spec.ParentRefs, tlsRoutes[i].Spec.Hostnames) {
+					lwr.TLSRoutes = append(lwr.TLSRoutes, tlsRoutes[i])
+				}
+			}
+			merged = append(merged, lwr)
+		}
+	}
+	return merged
+}
+
+// listenerAttachesRoute reports whether a route attaches to the given
+// listener. The check is the conjunction of: parentRef matches the listener's
+// source + section + port; route kind is allowed by the listener; route
+// namespace is within the listener's allowed namespaces; route hostnames
+// intersect the listener hostname.
+func listenerAttachesRoute(
+	l *gatewayv1.Listener,
+	source model.FullyQualifiedResource,
+	allowedNS map[string]struct{},
+	route metav1.Object,
+	parentRefs []gatewayv1.ParentReference,
+	hostnames []gatewayv1.Hostname,
+) bool {
+	if allowedNS != nil {
+		if _, ok := allowedNS[route.GetNamespace()]; !ok {
+			return false
+		}
+	}
+	if !helpers.IsKindAllowed(*l, route) {
+		return false
+	}
+	matched := false
+	for _, parent := range parentRefs {
+		if ListenerMatchesParentRef(parent, source.Kind, source.Name, source.Namespace,
+			l.Name, l.Port, route.GetNamespace()) {
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		return false
+	}
+	// Hostname intersection: an empty result means no hostname matches the
+	// listener, so the route does not attach.
+	if len(model.ComputeHosts(toStringSlice(hostnames), (*string)(l.Hostname), nil)) == 0 {
+		return false
+	}
+	return true
 }
 
 // Input is the input for GatewayAPI.
