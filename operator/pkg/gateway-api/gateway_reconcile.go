@@ -1277,7 +1277,7 @@ func (r *gatewayReconciler) runListenerSetRouteChecks(input routechecks.Input, p
 // listenerSetRouteInput wraps an Input to override GetListenerSource for ListenerSet parentRefs.
 type listenerSetRouteInput struct {
 	routechecks.Input
-	owner routechecks.ListenerOwner
+	source routechecks.ListenerSource
 }
 
 func (l *listenerSetRouteInput) GetListenerOwner(parent gatewayv1.ParentReference) (routechecks.ListenerOwner, error) {
