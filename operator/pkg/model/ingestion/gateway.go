@@ -268,15 +268,8 @@ func ListenerMatchesParentRef(
 	if parent.SectionName != nil && *parent.SectionName != listenerName {
 		return false
 	}
-	return filtered
-}
-
-func (l *ListenerWithContext) FilterTLSRoutes(routes []gatewayv1.TLSRoute) []gatewayv1.TLSRoute {
-	var filtered []gatewayv1.TLSRoute
-	for _, r := range routes {
-		if l.routeAllowed(r.Spec.ParentRefs, r.GetNamespace()) {
-			filtered = append(filtered, r)
-		}
+	if parent.Port != nil && *parent.Port != listenerPort {
+		return false
 	}
 	return filtered
 }
