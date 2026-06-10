@@ -216,10 +216,10 @@ type Input struct {
 	ServiceImports      []mcsapiv1beta1.ServiceImport
 	BackendTLSPolicyMap helpers.BackendTLSPolicyServiceMap
 
-	// MergedListeners is the merged list of listeners from the Gateway and any
-	// attached ListenerSets, with per-listener ownership context. When non-nil,
-	// GatewayAPI() uses this instead of Gateway.Spec.Listeners.
-	MergedListeners []ListenerWithContext
+	// Listeners is the merged list of listeners from the Gateway and any
+	// attached ListenerSets, each carrying the per-listener routes that
+	// attach to it. Build it with BuildListenersWithRoutes.
+	Listeners []ListenerWithRoutes
 }
 
 // parentRefMatchesSource checks whether a route's parentRef targets the same
