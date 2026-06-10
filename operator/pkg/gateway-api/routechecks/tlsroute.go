@@ -136,8 +136,8 @@ func (t *TLSRouteInput) GetListenerSource(parent gatewayv1.ParentReference) (Lis
 		return nil, fmt.Errorf("gateway %q does not exist: %w", parent.Name, err)
 	}
 
-	owner := &GatewayListenerOwner{Gateway: gw}
-	t.gateways[parent] = owner
+	source := &GatewayListenerSource{Gateway: gw}
+	t.gateways[parent] = source
 
 	return owner, nil
 }
