@@ -1280,8 +1280,8 @@ type listenerSetRouteInput struct {
 	source routechecks.ListenerSource
 }
 
-func (l *listenerSetRouteInput) GetListenerOwner(parent gatewayv1.ParentReference) (routechecks.ListenerOwner, error) {
-	return l.owner, nil
+func (l *listenerSetRouteInput) GetListenerSource(parent gatewayv1.ParentReference) (routechecks.ListenerSource, error) {
+	return l.source, nil
 }
 
 func (r *gatewayReconciler) parentIsMatchingGateway(parent gatewayv1.ParentReference, namespace string) bool {
