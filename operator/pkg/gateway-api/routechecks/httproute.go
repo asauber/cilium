@@ -131,7 +131,7 @@ func (h *HTTPRouteInput) GetListenerSource(parent gatewayv1.ParentReference) (Li
 	source := &GatewayListenerSource{Gateway: gw}
 	h.gateways[parent] = source
 
-	return owner, nil
+	return source, nil
 }
 
 func (h *HTTPRouteInput) GetParentGammaService(parent gatewayv1.ParentReference) (*corev1.Service, error) {
