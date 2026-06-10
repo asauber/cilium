@@ -809,10 +809,7 @@ func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1
 				listenerAcceptedCondition(gw.GetGeneration(), true, gatewayv1.ListenerReasonAccepted, "Listener Accepted"),
 				listenerProgrammedCondition(gw.GetGeneration(), false, "Address not ready yet"))
 		}
-		var attachedRoutes int32
-		attachedRoutes += int32(len(r.filterHTTPRoutesByListener(ctx, gw, &l, nil, httpRoutes.Items)))
-		attachedRoutes += int32(len(r.filterGRPCRoutesByListener(ctx, gw, &l, nil, grpcRoutes.Items)))
-		attachedRoutes += int32(len(r.filterTLSRoutesByListener(ctx, gw, &l, nil, tlsRoutes.Items)))
+		attachedRoutes := countAttachedRoutes(listenersWithRoutes, "Gateway", gw.GetName(), gw.GetNamespace(), l.Name)
 
 		found := false
 		for i := range gw.Status.Listeners {
