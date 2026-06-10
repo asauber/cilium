@@ -1,0 +1,19 @@
+- metadata:
+    creationTimestamp: null
+    name: additional-listeners
+    namespace: app-ns
+    uid: listenerset-uid
+  spec:
+    parentRef:
+      name: listenerset-gateway
+      namespace: infra
+    listeners:
+      - name: listenerset-https
+        hostname: ls.example.com
+        port: 8443
+        protocol: HTTPS
+        tls:
+          mode: Terminate
+          certificateRefs:
+            - name: tls-cert
+              namespace: cert-ns

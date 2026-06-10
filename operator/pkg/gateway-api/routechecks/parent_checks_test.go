@@ -20,7 +20,7 @@ import (
 // - https: kinds [HTTPRoute]
 // - grpcs: kinds [GRPCRoute]
 //
-// Used to test that CheckGatewayRouteKindAllowed evaluates only the
+// Used to test that CheckParentRouteKindAllowed evaluates only the
 // listener targeted by parentRef.sectionName, not all listeners.
 var kindRestrictedGateway = &gatewayv1.Gateway{
 	ObjectMeta: metav1.ObjectMeta{
@@ -61,7 +61,7 @@ var kindRestrictedGateway = &gatewayv1.Gateway{
 }
 
 // Gateway fixture with restrictive Selector listener first, permissive All
-// listener second. Used to test that CheckGatewayAllowedForNamespace does not
+// listener second. Used to test that CheckParentAllowedForNamespace does not
 // early-return on a Selector failure before checking remaining listeners.
 var mixedNamespaceGateway = &gatewayv1.Gateway{
 	ObjectMeta: metav1.ObjectMeta{
@@ -262,7 +262,7 @@ var namespaceFixture = []client.Object{
 	},
 }
 
-func TestCheckGatewayAllowedForNamespace(t *testing.T) {
+func TestCheckParentAllowedForNamespace(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = gatewayv1.Install(scheme)
 	_ = corev1.AddToScheme(scheme)
@@ -694,19 +694,19 @@ func TestCheckGatewayAllowedForNamespace(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := CheckGatewayAllowedForNamespace(tt.args.input, tt.args.parentRef)
+			got, err := CheckParentAllowedForNamespace(tt.args.input, tt.args.parentRef)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("CheckGatewayAllowedForNamespace() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("CheckParentAllowedForNamespace() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if got != tt.want {
-				t.Errorf("CheckGatewayAllowedForNamespace() got = %v, want %v", got, tt.want)
+				t.Errorf("CheckParentAllowedForNamespace() got = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestCheckGatewayRouteKindAllowed(t *testing.T) {
+func TestCheckParentRouteKindAllowed(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = gatewayv1.Install(scheme)
 
@@ -822,13 +822,13 @@ func TestCheckGatewayRouteKindAllowed(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := CheckGatewayRouteKindAllowed(tt.args.input, tt.args.parentRef)
+			got, err := CheckParentRouteKindAllowed(tt.args.input, tt.args.parentRef)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("CheckGatewayRouteKindAllowed() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("CheckParentRouteKindAllowed() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if got != tt.want {
-				t.Errorf("CheckGatewayRouteKindAllowed() got = %v, want %v", got, tt.want)
+				t.Errorf("CheckParentRouteKindAllowed() got = %v, want %v", got, tt.want)
 			}
 		})
 	}

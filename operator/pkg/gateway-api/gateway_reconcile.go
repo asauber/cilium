@@ -123,17 +123,17 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return r.handleReconcileErrorWithStatus(ctx, err, original, gw)
 	}
 
-	grpcRouteList := &gatewayv1.GRPCRouteList{}
-	if err := r.Client.List(ctx, grpcRouteList, &client.ListOptions{
+	allGRPCRoutes := &gatewayv1.GRPCRouteList{}
+	if err := r.Client.List(ctx, allGRPCRoutes, &client.ListOptions{
 		FieldSelector: fields.OneTermEqualSelector(indexers.GatewayGRPCRouteIndex, client.ObjectKeyFromObject(original).String()),
 	}); err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to list GRPCRoutes", logfields.Error, err)
 		return r.handleReconcileErrorWithStatus(ctx, err, original, gw)
 	}
 
-	tlsRouteList := &gatewayv1.TLSRouteList{}
+	allTLSRoutes := &gatewayv1.TLSRouteList{}
 	if helpers.HasTLSRouteSupport(r.Client.Scheme()) {
-		if err := r.Client.List(ctx, tlsRouteList, &client.ListOptions{
+		if err := r.Client.List(ctx, allTLSRoutes, &client.ListOptions{
 			FieldSelector: fields.OneTermEqualSelector(indexers.GatewayTLSRouteIndex, client.ObjectKeyFromObject(original).String()),
 		}); err != nil {
 			scopedLog.ErrorContext(ctx, "Unable to list TLSRoutes", logfields.Error, err)
@@ -193,21 +193,21 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// Run the HTTPRoute route checks here and update the status accordingly.
-	if err := r.setHTTPRouteStatuses(scopedLog, ctx, httpRouteList, grants); err != nil {
+	if err := r.setHTTPRouteStatuses(scopedLog, ctx, allHTTPRoutes, grants); err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to update HTTPRoute Status", logfields.Error, err)
 		return controllerruntime.Fail(err)
 	}
 
 	// Run the TLSRoute route checks here and update the status accordingly.
 	if helpers.HasTLSRouteSupport(r.Client.Scheme()) {
-		if err := r.setTLSRouteStatuses(scopedLog, ctx, tlsRouteList, grants); err != nil {
+		if err := r.setTLSRouteStatuses(scopedLog, ctx, allTLSRoutes, grants); err != nil {
 			scopedLog.ErrorContext(ctx, "Unable to update TLSRoute Status", logfields.Error, err)
 			return controllerruntime.Fail(err)
 		}
 	}
 
 	// Run the GRPCRoute route checks here and update the status accordingly.
-	if err := r.setGRPCRouteStatuses(scopedLog, ctx, grpcRouteList, grants); err != nil {
+	if err := r.setGRPCRouteStatuses(scopedLog, ctx, allGRPCRoutes, grants); err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to update GRPCRoute Status", logfields.Error, err)
 		return controllerruntime.Fail(err)
 	}
@@ -226,7 +226,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// by routes rolling up to this Gateway.
 	attachedHTTPRoutes := uniqueAttachedHTTPRoutes(listenersWithRoutes)
 
-	if err := r.setBackendTLSPolicyStatuses(scopedLog, ctx, httpRoutes, btlspMap, req.NamespacedName); err != nil {
+	if err := r.setBackendTLSPolicyStatuses(scopedLog, ctx, attachedHTTPRoutes, btlspMap, req.NamespacedName); err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to update BackendTLSPolicy Status", logfields.Error, err)
 		return controllerruntime.Fail(err)
 	}
@@ -236,9 +236,6 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		GatewayClass:        *gwc,
 		GatewayClassConfig:  gatewayClassConfig,
 		Gateway:             *gw,
-		HTTPRoutes:          httpRoutes,
-		TLSRoutes:           tlsRoutes,
-		GRPCRoutes:          grpcRoutes,
 		Services:            servicesList.Items,
 		ServiceImports:      serviceImportsList.Items,
 		ReferenceGrants:     grants.Items,
@@ -246,7 +243,10 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		Listeners:           listenersWithRoutes,
 	})
 
-	validListener, err := r.setListenerStatus(ctx, gw, httpRouteList, tlsRouteList, grpcRouteList)
+	// setListenerStatus and setListenerSetStatuses read per-listener attachment
+	// counts from listenersWithRoutes (built above) for each Gateway / ListenerSet
+	// listener.
+	validListener, err := r.setListenerStatus(ctx, gw, listenersWithRoutes)
 	if err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to set listener status", logfields.Error, err)
 		setGatewayAccepted(gw, false, "Unable to set listener status", gatewayv1.GatewayReasonNoResources)

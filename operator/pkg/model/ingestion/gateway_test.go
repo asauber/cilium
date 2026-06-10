@@ -221,9 +221,30 @@ func readGatewayInput(t *testing.T, testName string) Input {
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-gatewayclass.yaml"), &input.GatewayClass)
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-gatewayclassconfig.yaml"), &input.GatewayClassConfig)
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-gateway.yaml"), &input.Gateway)
-	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-httproute.yaml"), &input.HTTPRoutes)
-	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-tlsroute.yaml"), &input.TLSRoutes)
-	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-grpcroute.yaml"), &input.GRPCRoutes)
+
+	var httpRoutes []gatewayv1.HTTPRoute
+	var tlsRoutes []gatewayv1.TLSRoute
+	var grpcRoutes []gatewayv1.GRPCRoute
+	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-httproute.yaml"), &httpRoutes)
+	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-tlsroute.yaml"), &tlsRoutes)
+	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-grpcroute.yaml"), &grpcRoutes)
+
+	// Test fixtures intentionally do not include route Status.Parents because
+	// they exercise ingestion in isolation, but the canonical attachment path
+	// requires routes to carry Accepted=True on each parentRef (set by the
+	// reconciler's setHTTPRouteStatuses before BuildListenersWithRoutes runs).
+	// Synthesize those conditions here so the in-test data path mirrors what
+	// reaches ingestion in production.
+	for i := range httpRoutes {
+		acceptParentRefs(&httpRoutes[i].Status.RouteStatus, httpRoutes[i].Spec.ParentRefs, httpRoutes[i].GetNamespace())
+	}
+	for i := range tlsRoutes {
+		acceptParentRefs(&tlsRoutes[i].Status.RouteStatus, tlsRoutes[i].Spec.ParentRefs, tlsRoutes[i].GetNamespace())
+	}
+	for i := range grpcRoutes {
+		acceptParentRefs(&grpcRoutes[i].Status.RouteStatus, grpcRoutes[i].Spec.ParentRefs, grpcRoutes[i].GetNamespace())
+	}
+
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-service.yaml"), &input.Services)
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-serviceimport.yaml"), &input.ServiceImports)
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-referencegrant.yaml"), &input.ReferenceGrants)

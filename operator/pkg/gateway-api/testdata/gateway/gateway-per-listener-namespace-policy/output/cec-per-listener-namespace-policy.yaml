@@ -3,20 +3,20 @@ metadata:
   annotations:
     cec.cilium.io/use-original-source-address: "false"
   labels:
-    gateway.networking.k8s.io/gateway-name: gateway-multiple-listeners
-  name: cilium-gateway-gateway-multiple-listeners
+    gateway.networking.k8s.io/gateway-name: per-listener-namespace-policy
+  name: cilium-gateway-per-listener-namespace-policy
   namespace: gateway-conformance-infra
   ownerReferences:
     - apiVersion: gateway.networking.k8s.io/v1
       controller: true
       kind: Gateway
-      name: gateway-multiple-listeners
+      name: per-listener-namespace-policy
       uid: ""
   resourceVersion: "1"
 spec:
   backendServices:
-    - name: infra-backend-v1
-      namespace: gateway-conformance-infra
+    - name: web-backend
+      namespace: gateway-conformance-web-backend
       number:
         - "8080"
   resources:
@@ -82,13 +82,13 @@ spec:
             - match:
                 prefix: /
               route:
-                cluster: "gateway-conformance-infra:infra-backend-v1:8080"
+                cluster: "gateway-conformance-web-backend:web-backend:8080"
                 maxStreamDuration:
                   maxStreamDuration: 0s
     - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
       edsClusterConfig:
-        serviceName: gateway-conformance-infra/infra-backend-v1:8080
-      name: gateway-conformance-infra:infra-backend-v1:8080
+        serviceName: gateway-conformance-web-backend/web-backend:8080
+      name: gateway-conformance-web-backend:web-backend:8080
       outlierDetection:
         splitExternalLocalOriginErrors: true
       type: EDS
@@ -101,7 +101,7 @@ spec:
             http2ProtocolOptions: {}
   services:
     - listener: ""
-      name: cilium-gateway-gateway-multiple-listeners
+      name: cilium-gateway-per-listener-namespace-policy
       namespace: gateway-conformance-infra
       ports:
         - 80

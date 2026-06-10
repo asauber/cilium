@@ -24,6 +24,7 @@ import (
 
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
 	"github.com/cilium/cilium/operator/pkg/gateway-api/indexers"
+	"github.com/cilium/cilium/operator/pkg/model/ingestion"
 	"github.com/cilium/cilium/operator/pkg/model/translation"
 	gatewayApiTranslation "github.com/cilium/cilium/operator/pkg/model/translation/gateway-api"
 	ciliumv2 "github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2"
@@ -193,6 +194,15 @@ func Test_Conformance(t *testing.T) {
 			gateway: []gwDetails{
 				{FullName: types.NamespacedName{
 					Name:      "gateway-multiple-listeners",
+					Namespace: "gateway-conformance-infra",
+				}},
+			},
+		},
+		{
+			name: "gateway-per-listener-namespace-policy",
+			gateway: []gwDetails{
+				{FullName: types.NamespacedName{
+					Name:      "per-listener-namespace-policy",
 					Namespace: "gateway-conformance-infra",
 				}},
 			},
@@ -712,9 +722,8 @@ func Test_sectionNameMatched(t *testing.T) {
 		},
 	}
 	type args struct {
-		routeNamespace string
-		listener       *gatewayv1.Listener
-		refs           []gatewayv1.ParentReference
+		listener *gatewayv1.Listener
+		refs     []gatewayv1.ParentReference
 	}
 	tests := []struct {
 		name string

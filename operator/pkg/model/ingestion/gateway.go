@@ -5,6 +5,7 @@ package ingestion
 
 import (
 	"cmp"
+	"context"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -208,9 +209,6 @@ type Input struct {
 	GatewayClassConfig *v2alpha1.CiliumGatewayClassConfig
 
 	Gateway             gatewayv1.Gateway
-	HTTPRoutes          []gatewayv1.HTTPRoute
-	TLSRoutes           []gatewayv1.TLSRoute
-	GRPCRoutes          []gatewayv1.GRPCRoute
 	ReferenceGrants     []gatewayv1.ReferenceGrant
 	Services            []corev1.Service
 	ServiceImports      []mcsapiv1beta1.ServiceImport
@@ -394,52 +392,11 @@ func toHTTPRoutes(log *slog.Logger,
 	grants []gatewayv1.ReferenceGrant,
 	btlspMap helpers.BackendTLSPolicyServiceMap,
 ) []model.HTTPRoute {
+	// Per-listener route attachment was already enforced by
+	// BuildListenersWithRoutes; input is the slice of HTTPRoutes that attach to
+	// this listener.
 	var httpRoutes []model.HTTPRoute
 	for _, r := range input {
-		listenerIsParent := false
-		// Check parents to see if r can attach to them.
-		// We have to consider _both_ SectionName and Port
-		for _, parent := range r.Spec.ParentRefs {
-			// First, if both SectionName and Port are unset, attach
-			if parent.SectionName == nil && parent.Port == nil {
-				listenerIsParent = true
-				break
-			}
-
-			// Then, if SectionName is set, check combinations with Port.
-			if parent.SectionName != nil {
-				if *parent.SectionName != listener.Name {
-					// If SectionName is set but not equal, no other settings
-					// matter, so check the next parent.
-					continue
-				}
-
-				if parent.Port != nil && *parent.Port != listener.Port {
-					// If SectionName is set and equal, but Port is set and _unequal_,
-					continue
-				}
-
-				listenerIsParent = true
-				break
-			}
-
-			if parent.Port != nil {
-				if *parent.Port != listener.Port {
-					// If Port is set but not equal, no other settings
-					// matter, check the next parent.
-					continue
-				}
-
-				listenerIsParent = true
-				break
-			}
-
-		}
-
-		if !listenerIsParent {
-			continue
-		}
-
 		allProtocolHostnames := listenerHostnamesByProtocol[listener.Protocol]
 
 		computedHost := model.ComputeHosts(toStringSlice(r.Spec.Hostnames), (*string)(listener.Hostname), allProtocolHostnames)
@@ -780,19 +737,11 @@ func toGRPCRoutes(listener gatewayv1beta1.Listener,
 	serviceImports []mcsapiv1beta1.ServiceImport,
 	grants []gatewayv1.ReferenceGrant,
 ) []model.HTTPRoute {
+	// Per-listener route attachment was already enforced by
+	// BuildListenersWithRoutes; input is the slice of GRPCRoutes that attach to
+	// this listener.
 	var grpcRoutes []model.HTTPRoute
 	for _, r := range input {
-		isListener := false
-		for _, parent := range r.Spec.ParentRefs {
-			if parent.SectionName == nil || *parent.SectionName == listener.Name {
-				isListener = true
-				break
-			}
-		}
-		if !isListener {
-			continue
-		}
-
 		allProtocolHostnames := listenerHostnamesByProtocol[listener.Protocol]
 
 		computedHost := model.ComputeHosts(toStringSlice(r.Spec.Hostnames), (*string)(listener.Hostname), allProtocolHostnames)
@@ -902,19 +851,11 @@ func extractGRPCRoutes(hostnames []string, grpcr gatewayv1.GRPCRoute, services [
 }
 
 func toTLSRoutes(listener gatewayv1beta1.Listener, listenerHostnamesByProtocol map[gatewayv1.ProtocolType][]string, input []gatewayv1.TLSRoute, services []corev1.Service, serviceImports []mcsapiv1beta1.ServiceImport, grants []gatewayv1.ReferenceGrant) []model.TLSPassthroughRoute {
+	// Per-listener route attachment was already enforced by
+	// BuildListenersWithRoutes; input is the slice of TLSRoutes that attach to
+	// this listener.
 	var tlsRoutes []model.TLSPassthroughRoute
 	for _, r := range input {
-		isListener := false
-		for _, parent := range r.Spec.ParentRefs {
-			if parent.SectionName == nil || *parent.SectionName == listener.Name {
-				isListener = true
-				break
-			}
-		}
-		if !isListener {
-			continue
-		}
-
 		allProtocolHostnames := listenerHostnamesByProtocol[listener.Protocol]
 		computedHost := model.ComputeHosts(toStringSlice(r.Spec.Hostnames), (*string)(listener.Hostname), allProtocolHostnames)
 		// No matching host, skip this route

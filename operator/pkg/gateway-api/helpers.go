@@ -14,27 +14,13 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
-	"github.com/cilium/cilium/operator/pkg/model"
+	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
 	"github.com/cilium/cilium/pkg/logging/logfields"
-)
-
-const (
-	kindHTTPRoute = "HTTPRoute"
-	kindTLSRoute  = "TLSRoute"
-	kindGRPCRoute = "GRPCRoute"
-	kindUDPRoute  = "UDPRoute"
-	kindTCPRoute  = "TCPRoute"
 )
 
 func GatewayAddressTypePtr(addr gatewayv1.AddressType) *gatewayv1.AddressType {
 	return &addr
-}
-
-func GroupPtr(name string) *gatewayv1.Group {
-	group := gatewayv1.Group(name)
-	return &group
 }
 
 func KindPtr(name string) *gatewayv1.Kind {
@@ -67,7 +53,7 @@ func isAllowed(ctx context.Context, c client.Client, gw *gatewayv1.Gateway, rout
 		}
 
 		// check if route is kind-allowed
-		if !isKindAllowed(listener, route) {
+		if !helpers.IsKindAllowed(listener, route) {
 			continue
 		}
 

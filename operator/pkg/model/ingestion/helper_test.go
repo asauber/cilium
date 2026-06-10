@@ -35,6 +35,27 @@ func readInput(t *testing.T, file string, obj any) {
 	require.NoError(t, k8syaml.Unmarshal(inputYaml, obj))
 }
 
+// acceptParentRefs synthesizes Accepted=True conditions on the route's
+// RouteStatus for each declared parentRef. This mirrors what the reconciler's
+// setHTTPRouteStatuses (etc.) writes before BuildListenersWithRoutes runs in
+// production, and lets test fixtures omit the boilerplate Status block.
+func acceptParentRefs(status *gatewayv1.RouteStatus, refs []gatewayv1.ParentReference, routeNamespace string) {
+	for _, ref := range refs {
+		status.Parents = append(status.Parents, gatewayv1.RouteParentStatus{
+			ParentRef:      ref,
+			ControllerName: "io.cilium/gateway-controller",
+			Conditions: []metav1.Condition{
+				{
+					Type:   string(gatewayv1.RouteConditionAccepted),
+					Status: metav1.ConditionTrue,
+					Reason: string(gatewayv1.RouteReasonAccepted),
+				},
+			},
+		})
+	}
+	_ = routeNamespace
+}
+
 func readOutput(t *testing.T, file string, obj any) string {
 	// unmarshal and marshal to prevent formatting diffs
 	outputYaml, err := os.ReadFile(file)
