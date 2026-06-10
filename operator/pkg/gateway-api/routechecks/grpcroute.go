@@ -89,7 +89,7 @@ func (g *GRPCRouteInput) GetGrants() []gatewayv1.ReferenceGrant {
 	return g.Grants.Items
 }
 
-func (g *GRPCRouteInput) GetListenerOwner(parent gatewayv1.ParentReference) (ListenerOwner, error) {
+func (g *GRPCRouteInput) GetListenerSource(parent gatewayv1.ParentReference) (ListenerSource, error) {
 	if g.gateways == nil {
 		g.gateways = make(map[gatewayv1.ParentReference]ListenerOwner)
 	}
