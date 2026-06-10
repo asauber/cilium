@@ -80,7 +80,7 @@ type Input interface {
 	GetContext() context.Context
 	GetGVK() schema.GroupVersionKind
 	GetGrants() []gatewayv1.ReferenceGrant
-	GetListenerOwner(parent gatewayv1.ParentReference) (ListenerOwner, error)
+	GetListenerSource(parent gatewayv1.ParentReference) (ListenerSource, error)
 	GetParentGammaService(parent gatewayv1.ParentReference) (*corev1.Service, error)
 	GetHostnames() []gatewayv1.Hostname
 	GetValidProtocols() []gatewayv1.ProtocolType
