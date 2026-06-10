@@ -41,9 +41,14 @@ func (g *GatewayListenerSource) GetListeners() []gatewayv1.Listener {
 	return g.Spec.Listeners
 }
 
-// ListenerSetListenerOwner holds converted listeners and namespace for a ListenerSet.
-type ListenerSetListenerOwner struct {
-	Listeners []gatewayv1.Listener
+func (g *GatewayListenerSource) IsListenerSet() bool {
+	return false
+}
+
+// ListenerSetListenerSource holds the identity and converted listeners for a
+// ListenerSet.
+type ListenerSetListenerSource struct {
+	Name      string
 	Namespace string
 }
 
