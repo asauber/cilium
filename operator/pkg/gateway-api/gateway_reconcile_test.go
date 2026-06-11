@@ -408,10 +408,12 @@ func Test_Conformance(t *testing.T) {
 			if !tt.disableTCPRoute {
 				clientBuilder.WithStatusSubresource(&gatewayv1alpha2.TCPRoute{})
 				clientBuilder.WithIndex(&gatewayv1alpha2.TCPRoute{}, indexers.GatewayTCPRouteIndex, indexers.IndexTCPRouteByGateway)
+				clientBuilder.WithIndex(&gatewayv1alpha2.TCPRoute{}, indexers.TCPRouteListenerSetIndex, indexers.IndexTCPRouteByListenerSet)
 			}
 			if !tt.disableUDPRoute {
 				clientBuilder.WithStatusSubresource(&gatewayv1alpha2.UDPRoute{})
 				clientBuilder.WithIndex(&gatewayv1alpha2.UDPRoute{}, indexers.GatewayUDPRouteIndex, indexers.IndexUDPRouteByGateway)
+				clientBuilder.WithIndex(&gatewayv1alpha2.UDPRoute{}, indexers.UDPRouteListenerSetIndex, indexers.IndexUDPRouteByListenerSet)
 			}
 			clientBuilder.WithIndex(&gatewayv1.ListenerSet{}, indexers.ListenerSetGatewayIndex, indexers.IndexListenerSetByGateway)
 			clientBuilder.WithIndex(&gatewayv1.HTTPRoute{}, indexers.HTTPRouteListenerSetIndex, indexers.IndexHTTPRouteByListenerSet)
