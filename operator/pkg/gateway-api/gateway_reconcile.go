@@ -1082,7 +1082,7 @@ func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1
 		return false, fmt.Errorf("failed to retrieve reference grants: %w", err)
 	}
 
-	conflictedListeners := samePortCrossProtocolConflictedListeners(gw)
+	conflictedListeners := conflictedGatewayListeners(gw)
 
 	// Keep track of if there is at least one Valid Listener; if not, the Gateway cannot be Accepted.
 	oneValidListener := false
@@ -1092,9 +1092,9 @@ func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1
 
 		var conds []metav1.Condition
 
-		if conflictMessage, ok := conflictedListeners[l.Name]; ok {
-			conds = merge(conds, listenerConflictedCondition(gw.GetGeneration(), gatewayv1.ListenerReasonProtocolConflict, conflictMessage))
-			invalidMessages = append(invalidMessages, conflictMessage)
+		if conflict, ok := conflictedListeners[l.Name]; ok {
+			conds = merge(conds, listenerConflictedCondition(gw.GetGeneration(), conflict.reason, conflict.message))
+			invalidMessages = append(invalidMessages, conflict.message)
 			isValid = false
 		}
 
@@ -1176,41 +1176,111 @@ func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1
 	return oneValidListener, nil
 }
 
-func samePortCrossProtocolConflictedListeners(gw *gatewayv1.Gateway) map[gatewayv1.SectionName]string {
-	conflicted := map[gatewayv1.SectionName]string{}
+type listenerConflict struct {
+	reason  gatewayv1.ListenerConditionReason
+	message string
+}
+
+func conflictedGatewayListeners(gw *gatewayv1.Gateway) map[gatewayv1.SectionName]listenerConflict {
+	conflicts := map[gatewayv1.SectionName]listenerConflict{}
 
 	for i := range gw.Spec.Listeners {
 		for j := i + 1; j < len(gw.Spec.Listeners); j++ {
 			first := &gw.Spec.Listeners[i]
 			second := &gw.Spec.Listeners[j]
-			if !listenersHaveSamePortCrossProtocolHostnameConflict(first, second) {
+			reason, ok := listenerPairConflict(first, second)
+			if !ok {
 				continue
 			}
 
-			conflicted[first.Name] = samePortCrossProtocolConflictMessage(second.Name, first.Port)
-			conflicted[second.Name] = samePortCrossProtocolConflictMessage(first.Name, second.Port)
+			conflicts[first.Name] = listenerConflict{
+				reason:  reason,
+				message: listenerConflictMessage(reason, first, second),
+			}
+			conflicts[second.Name] = listenerConflict{
+				reason:  reason,
+				message: listenerConflictMessage(reason, second, first),
+			}
 		}
 	}
 
-	return conflicted
+	return conflicts
 }
 
-func listenersHaveSamePortCrossProtocolHostnameConflict(first, second *gatewayv1.Listener) bool {
+// listenerPairConflict reports whether two listeners that share a Gateway, or a
+// Gateway and its ListenerSets, conflict, along with the reason. Listeners on
+// different ports never conflict.
+func listenerPairConflict(first, second *gatewayv1.Listener) (gatewayv1.ListenerConditionReason, bool) {
 	if first.Port != second.Port {
-		return false
+		return "", false
 	}
 
-	if helpers.IsHTTPSTerminatedListener(first) && helpers.IsTLSPassthroughListener(second) {
-		return helpers.SNIHostnamesIntersect(helpers.ListenerHostname(first), helpers.ListenerHostname(second))
+	firstL4 := isL4Protocol(first.Protocol)
+	secondL4 := isL4Protocol(second.Protocol)
+
+	// L4 listeners own a port outright with no demultiplexing. TCP and UDP on
+	// the same port are the only compatible case involving an L4 listener.
+	if firstL4 || secondL4 {
+		if firstL4 && secondL4 && first.Protocol != second.Protocol {
+			return "", false
+		}
+		return gatewayv1.ListenerReasonProtocolConflict, true
 	}
-	if helpers.IsHTTPSTerminatedListener(second) && helpers.IsTLSPassthroughListener(first) {
-		return helpers.SNIHostnamesIntersect(helpers.ListenerHostname(first), helpers.ListenerHostname(second))
+
+	// HTTPS termination and TLS passthrough both consume the SNI of the same
+	// port, so they conflict whenever their hostnames can match the same value.
+	if isHTTPSAndTLSPassthroughPair(first, second) {
+		if helpers.SNIHostnamesIntersect(
+			helpers.ListenerHostname(first), helpers.ListenerHostname(second)) {
+			return gatewayv1.ListenerReasonProtocolConflict, true
+		}
+		return "", false
 	}
-	return false
+
+	// Listeners of the same muxed protocol demultiplex by hostname, so they only
+	// conflict when they claim the exact same hostname.
+	if first.Protocol == second.Protocol &&
+		normalizedListenerHostname(first) == normalizedListenerHostname(second) {
+		return gatewayv1.ListenerReasonHostnameConflict, true
+	}
+
+	return "", false
 }
 
-func samePortCrossProtocolConflictMessage(listenerName gatewayv1.SectionName, port gatewayv1.PortNumber) string {
-	return fmt.Sprintf("Listener conflicts with listener %q: same port %d has overlapping HTTPS and TLS passthrough hostnames.", listenerName, port)
+func isL4Protocol(p gatewayv1.ProtocolType) bool {
+	return p == gatewayv1.TCPProtocolType || p == gatewayv1.UDPProtocolType
+}
+
+func isHTTPSAndTLSPassthroughPair(first, second *gatewayv1.Listener) bool {
+	return (helpers.IsHTTPSTerminatedListener(first) && helpers.IsTLSPassthroughListener(second)) ||
+		(helpers.IsHTTPSTerminatedListener(second) && helpers.IsTLSPassthroughListener(first))
+}
+
+func normalizedListenerHostname(l *gatewayv1.Listener) string {
+	if h := helpers.ListenerHostname(l); h != "" {
+		return h
+	}
+	return "*"
+}
+
+func listenerConflictMessage(
+	reason gatewayv1.ListenerConditionReason,
+	self, other *gatewayv1.Listener,
+) string {
+	switch {
+	case reason == gatewayv1.ListenerReasonHostnameConflict:
+		return fmt.Sprintf(
+			"Listener conflicts with listener %q: same port %d has overlapping hostnames.",
+			other.Name, self.Port)
+	case isHTTPSAndTLSPassthroughPair(self, other):
+		return fmt.Sprintf(
+			"Listener conflicts with listener %q: same port %d has overlapping HTTPS and TLS passthrough hostnames.",
+			other.Name, self.Port)
+	default:
+		return fmt.Sprintf(
+			"Listener conflicts with listener %q: same port %d has incompatible protocols.",
+			other.Name, self.Port)
+	}
 }
 
 func validateTLSSecret(ctx context.Context, c client.Client, namespace, name string) error {
@@ -1374,90 +1444,24 @@ func (r *gatewayReconciler) validateListener(ctx context.Context, l gatewayv1.Li
 	return res
 }
 
-// claimedPorts tracks ownership of ports by two kinds of listeners:
-//
-//   - Muxed (HTTP, HTTPS, TLS): demultiplexed by hostname (Host header or SNI).
-//     Cilium allows several muxed protocols to share a port, so hostnames are
-//     tracked independently per (port, protocol). The only conflict type between
-//     muxed protocols is an exact (port, protocol, hostname) duplicate.
-//
-//   - L4 (TCP, UDP): each (port, protocol) pair is owned outright with no
-//     demultiplexing. TCP and UDP on the same port are distinct and may coexist.
-//     Any L4 claim is incompatible with a muxed claim claim on the same port.
-//
-//     Note that this logic results in allowing cases which are impractical to
-//     support, such as HTTPS and TLS allowed on the same port and hostname.
-//     These cases are currently allowed (requiring an extra level of nesting to
-//     track both protocol and hostname), in order to match the existing
-//     behavior of listeners on a top-level Gateway. Additional ProtocolConflict
-//     cases may be implemented in the future, which would simplify this
-//     implementation.
-type claimedPorts struct {
-	muxed map[gatewayv1.PortNumber]map[gatewayv1.ProtocolType]map[string]struct{}
-	l4    map[gatewayv1.PortNumber]map[gatewayv1.ProtocolType]struct{}
+// acceptedListeners is an ordered accumulator of listeners that have already
+// won their port. Listeners are checked against it in precedence order, so an
+// earlier listener keeps the port and a later conflicting one is rejected.
+type acceptedListeners struct {
+	listeners []gatewayv1.Listener
 }
 
-func newClaimedPorts() *claimedPorts {
-	return &claimedPorts{
-		muxed: map[gatewayv1.PortNumber]map[gatewayv1.ProtocolType]map[string]struct{}{},
-		l4:    map[gatewayv1.PortNumber]map[gatewayv1.ProtocolType]struct{}{},
-	}
-}
-
-func isL4Protocol(p gatewayv1.ProtocolType) bool {
-	return p == gatewayv1.TCPProtocolType || p == gatewayv1.UDPProtocolType
-}
-
-// checkConflict returns the conflict reason for adding the given listener to
-// the existing claims, or the empty string if the listener does not conflict.
-// It does not mutate the claims.
-func (c *claimedPorts) checkConflict(l gatewayv1.Listener, hostname string) gatewayv1.ListenerConditionReason {
-	if isL4Protocol(l.Protocol) {
-		if len(c.muxed[l.Port]) > 0 {
-			// L4 listener cannot share a port with any Muxed listener
-			return gatewayv1.ListenerReasonProtocolConflict
+func (a *acceptedListeners) checkConflict(l gatewayv1.Listener) gatewayv1.ListenerConditionReason {
+	for i := range a.listeners {
+		if reason, ok := listenerPairConflict(&a.listeners[i], &l); ok {
+			return reason
 		}
-		// Another L4 listener already owns this exact (port, protocol)
-		if _, ok := c.l4[l.Port][l.Protocol]; ok {
-			return gatewayv1.ListenerReasonProtocolConflict
-		}
-		return ""
-	}
-	if len(c.l4[l.Port]) > 0 {
-		// Muxed listener cannot share a port with any L4 listener
-		return gatewayv1.ListenerReasonProtocolConflict
-	}
-	// Another Muxed listener already owns this exact (port, protocol, hostname)
-	if _, dup := c.muxed[l.Port][l.Protocol][hostname]; dup {
-		return gatewayv1.ListenerReasonHostnameConflict
 	}
 	return ""
 }
 
-// claim records ownership of the given listener. Callers must have already
-// verified via checkConflict that the listener does not conflict
-func (c *claimedPorts) claim(l gatewayv1.Listener, hostname string) {
-	if isL4Protocol(l.Protocol) {
-		if c.l4[l.Port] == nil {
-			c.l4[l.Port] = map[gatewayv1.ProtocolType]struct{}{}
-		}
-		c.l4[l.Port][l.Protocol] = struct{}{}
-		return
-	}
-	if c.muxed[l.Port] == nil {
-		c.muxed[l.Port] = map[gatewayv1.ProtocolType]map[string]struct{}{}
-	}
-	if c.muxed[l.Port][l.Protocol] == nil {
-		c.muxed[l.Port][l.Protocol] = map[string]struct{}{}
-	}
-	c.muxed[l.Port][l.Protocol][hostname] = struct{}{}
-}
-
-func listenerHostname(l gatewayv1.Listener) string {
-	if l.Hostname != nil {
-		return string(*l.Hostname)
-	}
-	return "*"
+func (a *acceptedListeners) accept(l gatewayv1.Listener) {
+	a.listeners = append(a.listeners, l)
 }
 
 func (r *gatewayReconciler) setListenerSetStatuses(
@@ -1479,10 +1483,11 @@ func (r *gatewayReconciler) setListenerSetStatuses(
 		return
 	}
 
-	// Populate the initial claimed ports from the direct Gateway listeners
-	claimed := newClaimedPorts()
+	// Seed the accumulator with the direct Gateway listeners, which take
+	// precedence over any ListenerSet listener.
+	accepted := &acceptedListeners{}
 	for _, l := range gw.Spec.Listeners {
-		claimed.claim(l, listenerHostname(l))
+		accepted.accept(l)
 	}
 
 	var validAttachedCount int32
@@ -1497,8 +1502,7 @@ func (r *gatewayReconciler) setListenerSetStatuses(
 			l := helpers.ListenerEntryToListener(entry)
 			var conds []metav1.Condition
 
-			hostname := listenerHostname(l)
-			conflictReason := claimed.checkConflict(l, hostname)
+			conflictReason := accepted.checkConflict(l)
 			isConflicted := conflictReason != ""
 
 			if isConflicted {
@@ -1538,7 +1542,7 @@ func (r *gatewayReconciler) setListenerSetStatuses(
 				} else {
 					oneValidListener = true
 					// Claim this slot for subsequent listeners
-					claimed.claim(l, hostname)
+					accepted.accept(l)
 
 					// If ResolvedRefs is not already present, add a successful one.
 					if !helpers.IsConditionPresent(conds, string(gatewayv1.ListenerConditionResolvedRefs)) {
