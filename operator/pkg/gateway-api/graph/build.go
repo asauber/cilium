@@ -6,7 +6,6 @@ package graph
 import (
 	corev1 "k8s.io/api/core/v1"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
 	"github.com/cilium/cilium/operator/pkg/model"
@@ -23,8 +22,8 @@ type BuildInput struct {
 	HTTPRoutes []gatewayv1.HTTPRoute
 	GRPCRoutes []gatewayv1.GRPCRoute
 	TLSRoutes  []gatewayv1.TLSRoute
-	TCPRoutes  []gatewayv1alpha2.TCPRoute
-	UDPRoutes  []gatewayv1alpha2.UDPRoute
+	TCPRoutes  []gatewayv1.TCPRoute
+	UDPRoutes  []gatewayv1.UDPRoute
 
 	ReferenceGrants     []gatewayv1.ReferenceGrant
 	Namespaces          []corev1.Namespace

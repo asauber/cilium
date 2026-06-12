@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 func TestBuildBasicGateway(t *testing.T) {
@@ -110,12 +109,12 @@ func TestBuildRoutesAttachToListeners(t *testing.T) {
 				},
 			},
 		},
-		TCPRoutes: []gatewayv1alpha2.TCPRoute{
+		TCPRoutes: []gatewayv1.TCPRoute{
 			{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "tcp-route", Namespace: "default",
 				},
-				Spec: gatewayv1alpha2.TCPRouteSpec{
+				Spec: gatewayv1.TCPRouteSpec{
 					CommonRouteSpec: gatewayv1.CommonRouteSpec{
 						ParentRefs: []gatewayv1.ParentReference{
 							{
@@ -732,20 +731,20 @@ func TestBuildAllRouteTypes(t *testing.T) {
 				},
 			},
 		},
-		TCPRoutes: []gatewayv1alpha2.TCPRoute{
+		TCPRoutes: []gatewayv1.TCPRoute{
 			{
 				ObjectMeta: metav1.ObjectMeta{Name: "tcpr", Namespace: "default"},
-				Spec: gatewayv1alpha2.TCPRouteSpec{
+				Spec: gatewayv1.TCPRouteSpec{
 					CommonRouteSpec: gatewayv1.CommonRouteSpec{
 						ParentRefs: []gatewayv1.ParentReference{{Name: "gw"}},
 					},
 				},
 			},
 		},
-		UDPRoutes: []gatewayv1alpha2.UDPRoute{
+		UDPRoutes: []gatewayv1.UDPRoute{
 			{
 				ObjectMeta: metav1.ObjectMeta{Name: "udpr", Namespace: "default"},
-				Spec: gatewayv1alpha2.UDPRouteSpec{
+				Spec: gatewayv1.UDPRouteSpec{
 					CommonRouteSpec: gatewayv1.CommonRouteSpec{
 						ParentRefs: []gatewayv1.ParentReference{{Name: "gw"}},
 					},

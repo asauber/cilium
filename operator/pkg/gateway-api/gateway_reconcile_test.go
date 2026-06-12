@@ -24,6 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
+	"github.com/cilium/cilium/operator/pkg/gateway-api/graph"
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
 	"github.com/cilium/cilium/operator/pkg/gateway-api/indexers"
 	"github.com/cilium/cilium/operator/pkg/model/translation"
@@ -1065,9 +1066,15 @@ func Test_gatewayReconciler_setListenerStatus(t *testing.T) {
 					Build(),
 			}
 
-			gotStatus, err := r.setListenerStatus(
+			graphRoot := graph.Build(graph.BuildInput{Gateway: *gw})
+			graph.ValidateListeners(graphRoot, nil, func(namespace, name string) error {
+				return nil
+			})
+
+			gotStatus := r.setListenerStatus(
 				t.Context(),
 				gw,
+				graphRoot,
 				&gatewayv1.HTTPRouteList{},
 				&gatewayv1.TLSRouteList{},
 				&gatewayv1.GRPCRouteList{},
@@ -1075,7 +1082,6 @@ func Test_gatewayReconciler_setListenerStatus(t *testing.T) {
 				&gatewayv1.UDPRouteList{},
 				helpers.NewNamespaceLabelIndex(nil),
 			)
-			require.NoError(t, err)
 			require.Equal(t, tt.wantStatus, gotStatus)
 
 			for name, wantCond := range tt.wantListeners {

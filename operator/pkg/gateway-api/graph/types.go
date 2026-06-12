@@ -7,7 +7,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
 	"github.com/cilium/cilium/operator/pkg/model"
@@ -70,9 +69,9 @@ type TLSRouteNode struct {
 }
 
 type TCPRouteNode struct {
-	Route gatewayv1alpha2.TCPRoute
+	Route gatewayv1.TCPRoute
 }
 
 type UDPRouteNode struct {
-	Route gatewayv1alpha2.UDPRoute
+	Route gatewayv1.UDPRoute
 }
