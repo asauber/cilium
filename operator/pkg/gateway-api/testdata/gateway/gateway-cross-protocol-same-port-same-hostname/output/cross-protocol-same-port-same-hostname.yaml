@@ -53,7 +53,7 @@ status:
           type: Conflicted
         - lastTransitionTime: "2026-05-05T19:06:19Z"
           message: 'Listener not valid. Listener conflicts with listener "tls-passthrough": same port 443 has overlapping HTTPS and TLS passthrough hostnames.'
-          reason: Invalid
+          reason: ProtocolConflict
           status: "False"
           type: Accepted
         - lastTransitionTime: "2026-05-05T19:06:19Z"
@@ -61,6 +61,11 @@ status:
           reason: Pending
           status: "False"
           type: Programmed
+        - lastTransitionTime: "2026-05-05T19:06:19Z"
+          message: Resolved Refs
+          reason: ResolvedRefs
+          status: "True"
+          type: ResolvedRefs
       name: https
       supportedKinds:
         - group: gateway.networking.k8s.io
@@ -76,7 +81,7 @@ status:
           type: Conflicted
         - lastTransitionTime: "2026-05-05T19:06:19Z"
           message: 'Listener not valid. Listener conflicts with listener "https": same port 443 has overlapping HTTPS and TLS passthrough hostnames.'
-          reason: Invalid
+          reason: ProtocolConflict
           status: "False"
           type: Accepted
         - lastTransitionTime: "2026-05-05T19:06:19Z"
@@ -84,6 +89,11 @@ status:
           reason: Pending
           status: "False"
           type: Programmed
+        - lastTransitionTime: "2026-05-05T19:06:19Z"
+          message: Resolved Refs
+          reason: ResolvedRefs
+          status: "True"
+          type: ResolvedRefs
       name: tls-passthrough
       supportedKinds:
         - group: gateway.networking.k8s.io

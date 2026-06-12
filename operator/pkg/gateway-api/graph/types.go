@@ -43,8 +43,9 @@ type ListenerNode struct {
 	Listener gatewayv1.Listener
 	Source   model.FullyQualifiedResource
 
-	Valid      bool
-	Conditions []metav1.Condition
+	Valid          bool
+	Conditions     []metav1.Condition
+	SupportedKinds []gatewayv1.RouteGroupKind
 
 	HTTPRoutes []*HTTPRouteNode
 	GRPCRoutes []*GRPCRouteNode

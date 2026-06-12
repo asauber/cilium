@@ -32,26 +32,33 @@ status:
     - attachedRoutes: 0
       conditions:
         - lastTransitionTime: "2025-07-01T00:00:00Z"
-          message: Listener has a conflict
+          message:
+            'Listener conflicts with listener "http": same port 80 has incompatible
+            protocols.'
+          reason: ProtocolConflict
+          status: "True"
+          type: Conflicted
+        - lastTransitionTime: "2025-07-01T00:00:00Z"
+          message:
+            'Listener not valid. Listener conflicts with listener "http": same
+            port 80 has incompatible protocols.'
           reason: ProtocolConflict
           status: "False"
           type: Accepted
         - lastTransitionTime: "2025-07-01T00:00:00Z"
-          message: Listener has a conflict
+          message: Listener not valid
           reason: ProtocolConflict
           status: "False"
           type: Programmed
-        - lastTransitionTime: "2025-07-01T00:00:00Z"
-          message: Listener has a conflict
-          reason: ProtocolConflict
-          status: "True"
-          type: Conflicted
         - lastTransitionTime: "2025-07-01T00:00:00Z"
           message: Resolved Refs
           reason: ResolvedRefs
           status: "True"
           type: ResolvedRefs
       name: tcp-on-port-80
+      supportedKinds:
+        - group: gateway.networking.k8s.io
+          kind: TCPRoute
     - attachedRoutes: 0
       conditions:
         - lastTransitionTime: "2025-07-01T00:00:00Z"
