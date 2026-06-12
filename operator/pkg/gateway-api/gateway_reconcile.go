@@ -29,6 +29,7 @@ import (
 	mcsapiv1beta1 "sigs.k8s.io/mcs-api/pkg/apis/v1beta1"
 
 	controllerruntime "github.com/cilium/cilium/operator/pkg/controller-runtime"
+	"github.com/cilium/cilium/operator/pkg/gateway-api/graph"
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
 	"github.com/cilium/cilium/operator/pkg/gateway-api/indexers"
 	"github.com/cilium/cilium/operator/pkg/gateway-api/policychecks"
@@ -128,6 +129,18 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to resolve allowed ListenerSet listeners", logfields.Error, err)
 		return r.handleReconcileErrorWithStatus(ctx, err, original, gw)
+	}
+
+	var allListenerSets []gatewayv1.ListenerSet
+	if helpers.HasListenerSetSupport(r.Client.Scheme()) {
+		lsList := &gatewayv1.ListenerSetList{}
+		if err := r.Client.List(ctx, lsList, &client.ListOptions{
+			FieldSelector: fields.OneTermEqualSelector(indexers.ListenerSetGatewayIndex, client.ObjectKeyFromObject(gw).String()),
+		}); err != nil {
+			scopedLog.ErrorContext(ctx, "Unable to list ListenerSets for graph", logfields.Error, err)
+		} else {
+			allListenerSets = lsList.Items
+		}
 	}
 
 	httpRouteList := &gatewayv1.HTTPRouteList{}
@@ -292,6 +305,23 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			" These should be set using the spec.addresses field in Gateway objects instead."+
 			" At a future date this annotation will be removed if no spec.addresses are set.", gw.GetNamespace(), gw.GetName(), annotation.LBIPAMIPKeyAlias))
 	}
+
+	graphRoot := graph.Build(graph.BuildInput{
+		GatewayClass:        *gwc,
+		GatewayClassConfig:  r.getGatewayClassConfig(ctx, gwc),
+		Gateway:             *gw,
+		ListenerSets:        allListenerSets,
+		HTTPRoutes:          httpRouteList.Items,
+		GRPCRoutes:          grpcRouteList.Items,
+		TLSRoutes:           tlsRouteList.Items,
+		TCPRoutes:           tcpRouteList.Items,
+		UDPRoutes:           udpRouteList.Items,
+		ReferenceGrants:     grants.Items,
+		Namespaces:          namespaces,
+		Services:            servicesList.Items,
+		BackendTLSPolicyMap: btlspMap,
+	})
+	graph.DebugLog(scopedLog, graphRoot)
 
 	// Run the HTTPRoute route checks here and update the status accordingly.
 	if err := r.setHTTPRouteStatuses(scopedLog, ctx, httpRouteList, grants); err != nil {
