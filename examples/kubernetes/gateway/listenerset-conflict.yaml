@@ -1,0 +1,19 @@
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: partially-conflicted
+  namespace: listenerset-demo
+spec:
+  parentRef:
+    name: shared-gateway
+    namespace: default
+  listeners:
+  - name: duplicate-echo
+    hostname: echo.example.com
+    protocol: HTTP
+    port: 80
+  - name: other
+    hostname: other.example.com
+    protocol: HTTP
+    port: 80

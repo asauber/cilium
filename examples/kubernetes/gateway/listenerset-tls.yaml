@@ -1,0 +1,73 @@
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: shared-tls-gateway
+  namespace: default
+spec:
+  gatewayClassName: cilium
+  allowedListeners:
+    namespaces:
+      from: Selector
+      selector:
+        matchLabels:
+          gateway-access: "true"
+  listeners:
+  - name: base-http
+    protocol: HTTP
+    port: 8080
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: delegated-tls
+  namespace: listenerset-tls-demo
+spec:
+  parentRef:
+    name: shared-tls-gateway
+    namespace: default
+  listeners:
+  - name: secure
+    hostname: secure.example.com
+    protocol: HTTPS
+    port: 443
+    tls:
+      mode: Terminate
+      certificateRefs:
+      - group: ""
+        kind: Secret
+        name: secure-example-com
+        namespace: listenerset-certificates
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: ReferenceGrant
+metadata:
+  name: allow-listenerset-certificate
+  namespace: listenerset-certificates
+spec:
+  from:
+  - group: gateway.networking.k8s.io
+    kind: ListenerSet
+    namespace: listenerset-tls-demo
+  to:
+  - group: ""
+    kind: Secret
+    name: secure-example-com
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: secure-echo
+  namespace: listenerset-tls-demo
+spec:
+  parentRefs:
+  - group: gateway.networking.k8s.io
+    kind: ListenerSet
+    name: delegated-tls
+    sectionName: secure
+  hostnames:
+  - secure.example.com
+  rules:
+  - backendRefs:
+    - name: echo-1
+      port: 8080
