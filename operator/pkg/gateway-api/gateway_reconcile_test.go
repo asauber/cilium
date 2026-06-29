@@ -375,6 +375,9 @@ func Test_Conformance(t *testing.T) {
 		{name: "listenerset-route-hostname-independence", gateway: []gwDetails{
 			{FullName: types.NamespacedName{Name: "route-hostname-independence", Namespace: "gateway-conformance-infra"}},
 		}},
+		{name: "listenerset-route-gateway-isolation", gateway: []gwDetails{
+			{FullName: types.NamespacedName{Name: "route-gateway-isolation", Namespace: "gateway-conformance-infra"}},
+		}},
 		{name: "listenerset-valid-with-invalid-gateway-listener", skipCEC: true, gateway: []gwDetails{
 			{FullName: types.NamespacedName{Name: "valid-listenerset-only", Namespace: "gateway-conformance-infra"}, wantErr: true},
 		}},
