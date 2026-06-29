@@ -26,7 +26,7 @@ Prerequisites
   To use ListenerSet, install its Standard CRD before starting the Cilium operator.
   If this CRD is not installed, Cilium disables ListenerSet support.
 
-    - `ListenerSet <https://gateway-api.sigs.k8s.io/api-types/listenerset/>`__
+    - `ListenerSet <https://gateway-api.sigs.k8s.io/guides/user-guides/listener-set/>`__
 
   You can install the required CRDs like this:
 

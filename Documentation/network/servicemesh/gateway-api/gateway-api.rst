@@ -33,7 +33,7 @@ tests are passed.
 - `TLSRoute <https://gateway-api.sigs.k8s.io/reference/api-types/tlsroute/>`__
 - `BackendTLSPolicy <https://gateway-api.sigs.k8s.io/reference/api-types/policy/backendtlspolicy/>`__
 - `ReferenceGrant <https://gateway-api.sigs.k8s.io/reference/api-types/referencegrant/>`_
-- `ListenerSet <https://gateway-api.sigs.k8s.io/api-types/listenerset/>`__
+- `ListenerSet <https://gateway-api.sigs.k8s.io/guides/user-guides/listener-set/>`__
 - `TCPRoute (experimental) <https://gateway-api.sigs.k8s.io/reference/api-spec/main/spec/#tcproute>`__
 - `UDPRoute (experimental) <https://gateway-api.sigs.k8s.io/reference/api-spec/main/spec/#udproute>`__
 
