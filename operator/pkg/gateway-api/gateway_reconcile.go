@@ -126,6 +126,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
+	// TODO(ajs)
 	// Why are we calling a function here called "resolvedAllowedListeners"
 	// All validation of this type should be performed while building the graph
 	mergedListeners, attachedListenerSets, err := r.resolveAllowedListeners(ctx, scopedLog, gw)
@@ -405,7 +406,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// Accepted and Programmed conditions. Those Gateway conditions reflect the
 	// Gateway's local configuration, so valid ListenerSets do not make an
 	// otherwise invalid Gateway accepted or programmed.
-	r.setListenerSetStatuses(ctx, gw, graphRoot, attachedListenerSets, httpRouteList, tlsRouteList, grpcRouteList, tcpRouteList, udpRouteList, namespaceLabels)
+	r.setListenerSetStatuses(ctx, gw, graphRoot, httpRouteList, tlsRouteList, grpcRouteList, tcpRouteList, udpRouteList, namespaceLabels)
 
 	// Step 3: Translate the listeners into Cilium model
 	cec, svc, eps, err := r.translator.Translate(m)
@@ -1286,7 +1287,6 @@ func (r *gatewayReconciler) setListenerSetStatuses(
 	ctx context.Context,
 	gw *gatewayv1.Gateway,
 	graphRoot *graph.GatewayClassNode,
-	attachedListenerSets []gatewayv1.ListenerSet,
 	httpRoutes *gatewayv1.HTTPRouteList,
 	tlsRoutes *gatewayv1.TLSRouteList,
 	grpcRoutes *gatewayv1.GRPCRouteList,
@@ -1297,25 +1297,14 @@ func (r *gatewayReconciler) setListenerSetStatuses(
 	gw.Status.AttachedListenerSets = nil
 
 	var validAttachedCount int32
-	for i := range attachedListenerSets {
-		ls := &attachedListenerSets[i]
+	for _, lsNode := range graphRoot.Gateway.ListenerSets {
+		ls := &lsNode.ListenerSet
 		original := ls.DeepCopy()
-
-		if i >= len(graphRoot.Gateway.ListenerSets) {
-			break
-		}
-		// Why are we doing anything with paralell arrays!
-		// This is terrible!
-		lsNode := graphRoot.Gateway.ListenerSets[i]
 
 		oneValidListener := false
 		var listenerStatuses []gatewayv1.ListenerEntryStatus
 
-		for j, entry := range ls.Spec.Listeners {
-			if j >= len(lsNode.Listeners) {
-				break
-			}
-			ln := lsNode.Listeners[j]
+		for _, ln := range lsNode.Listeners {
 			l := ln.Listener
 
 			if ln.Valid {
@@ -1331,7 +1320,7 @@ func (r *gatewayReconciler) setListenerSetStatuses(
 			attachedRoutes += int32(len(r.filterUDPRoutesByListener(ctx, gw, &l, &lsSource, udpRoutes.Items, namespaceLabels, *ls)))
 
 			listenerStatuses = append(listenerStatuses, gatewayv1.ListenerEntryStatus{
-				Name:           entry.Name,
+				Name:           l.Name,
 				SupportedKinds: ln.SupportedKinds,
 				Conditions:     ln.Conditions,
 				AttachedRoutes: attachedRoutes,
