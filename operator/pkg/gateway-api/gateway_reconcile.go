@@ -126,22 +126,12 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
+	// Why are we calling a function here called "resolvedAllowedListeners"
+	// All validation of this type should be performed while building the graph
 	mergedListeners, attachedListenerSets, err := r.resolveAllowedListeners(ctx, scopedLog, gw)
 	if err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to resolve allowed ListenerSet listeners", logfields.Error, err)
 		return r.handleReconcileErrorWithStatus(ctx, err, original, gw)
-	}
-
-	var allListenerSets []gatewayv1.ListenerSet
-	if helpers.HasListenerSetSupport(r.Client.Scheme()) {
-		lsList := &gatewayv1.ListenerSetList{}
-		if err := r.Client.List(ctx, lsList, &client.ListOptions{
-			FieldSelector: fields.OneTermEqualSelector(indexers.ListenerSetGatewayIndex, client.ObjectKeyFromObject(gw).String()),
-		}); err != nil {
-			scopedLog.ErrorContext(ctx, "Unable to list ListenerSets for graph", logfields.Error, err)
-		} else {
-			allListenerSets = lsList.Items
-		}
 	}
 
 	httpRouteList := &gatewayv1.HTTPRouteList{}
@@ -311,7 +301,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		GatewayClass:        *gwc,
 		GatewayClassConfig:  r.getGatewayClassConfig(ctx, gwc),
 		Gateway:             *gw,
-		ListenerSets:        allListenerSets,
+		ListenerSets:        attachedListenerSets,
 		HTTPRoutes:          httpRouteList.Items,
 		GRPCRoutes:          grpcRouteList.Items,
 		TLSRoutes:           tlsRouteList.Items,
@@ -1314,6 +1304,8 @@ func (r *gatewayReconciler) setListenerSetStatuses(
 		if i >= len(graphRoot.Gateway.ListenerSets) {
 			break
 		}
+		// Why are we doing anything with paralell arrays!
+		// This is terrible!
 		lsNode := graphRoot.Gateway.ListenerSets[i]
 
 		oneValidListener := false
