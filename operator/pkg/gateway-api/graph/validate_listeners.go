@@ -8,7 +8,9 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
@@ -18,6 +20,22 @@ import (
 // TLSSecretValidator checks whether a TLS secret is valid.
 // Returns nil if the secret is valid, an error otherwise.
 type TLSSecretValidator func(namespace, name string) error
+
+// ValidateAllowedListenerSets evaluates the Gateway's spec.allowedListeners
+// policy against every attached ListenerSet and records the result on each
+// ListenerSetNode. It operates at ListenerSet granularity: it decides whether a
+// whole ListenerSet is admitted to the Gateway, matching each ListenerSet's own
+// namespace against the policy. It does not resolve per-listener Route
+// namespaces; that is ResolveAllowedRouteNamespaces.
+//
+// It must run before ValidateListeners, which relies on the Allowed field to
+// decide whether to validate a ListenerSet's listeners.
+func ValidateAllowedListenerSets(root *GatewayClassNode) {
+	gw := root.Gateway
+	for _, lsn := range gw.ListenerSets {
+		lsn.Allowed = gatewayAllowsListenerSet(gw.Gateway, lsn.ListenerSet, gw.Namespaces)
+	}
+}
 
 // ValidateListeners runs conflict detection and per-listener validation on
 // all ListenerNodes in the graph. It sets Valid, Conditions, and
@@ -52,6 +70,13 @@ func ValidateListeners(
 	}
 
 	for _, lsn := range gw.ListenerSets {
+		if !lsn.Allowed {
+			for _, ln := range lsn.Listeners {
+				ln.Valid = false
+			}
+			continue
+		}
+
 		for _, ln := range lsn.Listeners {
 			lsConflicts := accepted.checkConflicts(ln.Listener)
 
@@ -71,6 +96,42 @@ func ValidateListeners(
 			}
 		}
 	}
+}
+
+// gatewayAllowsListenerSet evaluates the Gateway's spec.allowedListeners policy
+// against a ListenerSet using the in-graph Namespaces slice. It is the pure,
+// client-free equivalent of the reconciler's allowedListeners check.
+func gatewayAllowsListenerSet(
+	gw gatewayv1.Gateway,
+	ls gatewayv1.ListenerSet,
+	namespaces []corev1.Namespace,
+) bool {
+	if gw.Spec.AllowedListeners == nil {
+		return false
+	}
+	ns := gw.Spec.AllowedListeners.Namespaces
+	if ns == nil || ns.From == nil {
+		return false
+	}
+	switch *ns.From {
+	case gatewayv1.NamespacesFromNone:
+		return false
+	case gatewayv1.NamespacesFromAll:
+		return true
+	case gatewayv1.NamespacesFromSame:
+		return ls.GetNamespace() == gw.GetNamespace()
+	case gatewayv1.NamespacesFromSelector:
+		selector, err := metav1.LabelSelectorAsSelector(ns.Selector)
+		if err != nil {
+			return false
+		}
+		for _, n := range namespaces {
+			if n.Name == ls.GetNamespace() && selector.Matches(labels.Set(n.Labels)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func validateListenerNode(

@@ -4,6 +4,8 @@
 package graph
 
 import (
+	"sort"
+
 	corev1 "k8s.io/api/core/v1"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
@@ -32,6 +34,10 @@ type BuildInput struct {
 }
 
 func Build(input BuildInput) *GatewayClassNode {
+	listenerSets := make([]gatewayv1.ListenerSet, len(input.ListenerSets))
+	copy(listenerSets, input.ListenerSets)
+	SortListenerSets(listenerSets)
+
 	gwNode := &GatewayNode{
 		Gateway:             input.Gateway,
 		ReferenceGrants:     input.ReferenceGrants,
@@ -59,8 +65,8 @@ func Build(input BuildInput) *GatewayClassNode {
 		gwNode.Listeners = append(gwNode.Listeners, ln)
 	}
 
-	for i := range input.ListenerSets {
-		ls := &input.ListenerSets[i]
+	for i := range listenerSets {
+		ls := &listenerSets[i]
 		lsSource := model.FullyQualifiedResource{
 			Name:      ls.GetName(),
 			Namespace: ls.GetNamespace(),
@@ -89,6 +95,22 @@ func Build(input BuildInput) *GatewayClassNode {
 		GatewayClassConfig: input.GatewayClassConfig,
 		Gateway:            gwNode,
 	}
+}
+
+// SortListenerSets orders ListenerSets by precedence: earliest creation
+// timestamp first, then namespace/name. This ordering decides which ListenerSet
+// wins a listener conflict during validation.
+func SortListenerSets(sets []gatewayv1.ListenerSet) {
+	sort.Slice(sets, func(i, j int) bool {
+		ti := sets[i].CreationTimestamp.Time
+		tj := sets[j].CreationTimestamp.Time
+		if !ti.Equal(tj) {
+			return ti.Before(tj)
+		}
+		ni := sets[i].GetNamespace() + "/" + sets[i].GetName()
+		nj := sets[j].GetNamespace() + "/" + sets[j].GetName()
+		return ni < nj
+	})
 }
 
 func attachRoutes(

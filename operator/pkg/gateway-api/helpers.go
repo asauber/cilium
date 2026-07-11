@@ -7,7 +7,6 @@ import (
 	"context"
 	"log/slog"
 	"maps"
-	"sort"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -248,19 +247,6 @@ func listenerSetFQR(ls *gatewayv1.ListenerSet) model.FullyQualifiedResource {
 	}
 }
 
-// sortListenerSets sorts ListenerSets by precedence rules
-func sortListenerSets(sets []gatewayv1.ListenerSet) {
-	sort.Slice(sets, func(i, j int) bool {
-		ti := sets[i].CreationTimestamp.Time
-		tj := sets[j].CreationTimestamp.Time
-		if !ti.Equal(tj) {
-			return ti.Before(tj)
-		}
-		ni := sets[i].GetNamespace() + "/" + sets[i].GetName()
-		nj := sets[j].GetNamespace() + "/" + sets[j].GetName()
-		return ni < nj
-	})
-}
 
 func deduplicateHTTPRoutes(routes []gatewayv1.HTTPRoute) []gatewayv1.HTTPRoute {
 	seen := make(map[types.NamespacedName]struct{}, len(routes))

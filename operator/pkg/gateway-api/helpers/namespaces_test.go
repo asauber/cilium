@@ -209,3 +209,47 @@ func TestIsListenerNamespaceAllowed(t *testing.T) {
 		})
 	}
 }
+
+func TestAllowedRouteNamespaces(t *testing.T) {
+	same := gatewayv1.NamespacesFromSame
+	all := gatewayv1.NamespacesFromAll
+	none := gatewayv1.NamespacesFromNone
+	selector := gatewayv1.NamespacesFromSelector
+
+	namespaces := []corev1.Namespace{
+		{ObjectMeta: metav1.ObjectMeta{Name: "prod", Labels: map[string]string{"env": "prod"}}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "dev", Labels: map[string]string{"env": "dev"}}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "own"}},
+	}
+	prodSelector := &metav1.LabelSelector{MatchLabels: map[string]string{"env": "prod"}}
+
+	withNamespaces := func(from *gatewayv1.FromNamespaces, sel *metav1.LabelSelector) gatewayv1.Listener {
+		l := gatewayv1.Listener{Name: "l"}
+		if from != nil || sel != nil {
+			l.AllowedRoutes = &gatewayv1.AllowedRoutes{
+				Namespaces: &gatewayv1.RouteNamespaces{From: from, Selector: sel},
+			}
+		}
+		return l
+	}
+
+	tests := []struct {
+		name     string
+		listener gatewayv1.Listener
+		expected map[string]struct{}
+	}{
+		{"no allowedRoutes defaults to Same", withNamespaces(nil, nil), map[string]struct{}{"own": {}}},
+		{"From None returns empty set", withNamespaces(&none, nil), map[string]struct{}{}},
+		{"From All returns nil", withNamespaces(&all, nil), nil},
+		{"From Same returns own namespace", withNamespaces(&same, nil), map[string]struct{}{"own": {}}},
+		{"From Selector returns matching namespaces", withNamespaces(&selector, prodSelector), map[string]struct{}{"prod": {}}},
+		{"From Selector no match returns empty set", withNamespaces(&selector, &metav1.LabelSelector{MatchLabels: map[string]string{"env": "staging"}}), map[string]struct{}{}},
+		{"nil From with selector uses selector", withNamespaces(nil, prodSelector), map[string]struct{}{"prod": {}}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, AllowedRouteNamespaces(tt.listener, "own", namespaces))
+		})
+	}
+}

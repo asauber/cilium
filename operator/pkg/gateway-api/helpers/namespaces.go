@@ -70,3 +70,58 @@ func isNamespaceSelected(selector *metav1.LabelSelector, routeNamespace string, 
 	}
 	return selectorMatcher.Matches(labels.Set(labelsForNamespace))
 }
+
+// AllowedRouteNamespaces resolves a listener's allowedRoutes.namespaces policy
+// into the set of namespaces whose Routes may attach. A nil result means all
+// namespaces are allowed (From: All); an empty set means none are (From: None).
+// It mirrors IsListenerNamespaceAllowed so pre-resolving the set is equivalent
+// to the per-Route check.
+func AllowedRouteNamespaces(
+	listener gatewayv1.Listener,
+	listenerNamespace string,
+	namespaces []corev1.Namespace,
+) map[string]struct{} {
+	routes := listener.AllowedRoutes
+	if routes == nil || routes.Namespaces == nil {
+		return map[string]struct{}{listenerNamespace: {}}
+	}
+
+	ns := routes.Namespaces
+	if ns.From == nil {
+		if ns.Selector != nil {
+			return namespacesMatchingSelector(ns.Selector, namespaces)
+		}
+		return map[string]struct{}{listenerNamespace: {}}
+	}
+
+	switch *ns.From {
+	case gatewayv1.NamespacesFromAll:
+		return nil
+	case gatewayv1.NamespacesFromSame:
+		return map[string]struct{}{listenerNamespace: {}}
+	case gatewayv1.NamespacesFromNone:
+		return map[string]struct{}{}
+	case gatewayv1.NamespacesFromSelector:
+		return namespacesMatchingSelector(ns.Selector, namespaces)
+	}
+	return map[string]struct{}{}
+}
+
+// namespacesMatchingSelector returns the names of namespaces whose labels match
+// the selector. An invalid selector matches nothing.
+func namespacesMatchingSelector(
+	selector *metav1.LabelSelector,
+	namespaces []corev1.Namespace,
+) map[string]struct{} {
+	allowed := make(map[string]struct{})
+	sel, err := metav1.LabelSelectorAsSelector(selector)
+	if err != nil {
+		return allowed
+	}
+	for _, ns := range namespaces {
+		if sel.Matches(labels.Set(ns.Labels)) {
+			allowed[ns.Name] = struct{}{}
+		}
+	}
+	return allowed
+}

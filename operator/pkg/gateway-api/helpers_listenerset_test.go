@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
+	"github.com/cilium/cilium/operator/pkg/gateway-api/graph"
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
 )
 
@@ -60,7 +61,7 @@ func Test_sortListenerSets(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sortListenerSets(tt.input)
+			graph.SortListenerSets(tt.input)
 			var got []string
 			for _, ls := range tt.input {
 				got = append(got, ls.GetNamespace()+"/"+ls.GetName())

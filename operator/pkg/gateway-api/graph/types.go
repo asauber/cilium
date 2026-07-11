@@ -35,6 +35,8 @@ type GatewayNode struct {
 type ListenerSetNode struct {
 	ListenerSet gatewayv1.ListenerSet
 
+	Allowed bool
+
 	Listeners []*ListenerNode
 }
 
@@ -45,6 +47,8 @@ type ListenerNode struct {
 	Valid          bool
 	Conditions     []metav1.Condition
 	SupportedKinds []gatewayv1.RouteGroupKind
+
+	AllowedRouteNamespaces map[string]struct{}
 
 	HTTPRoutes []*HTTPRouteNode
 	GRPCRoutes []*GRPCRouteNode

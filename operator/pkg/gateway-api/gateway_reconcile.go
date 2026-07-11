@@ -105,6 +105,11 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return controllerruntime.Success()
 	}
 
+	// TODO(ajs) Make this phase purely a gather of all pre-indexed objects.  We
+	// feed all explicitly indexed objects into the Gateway graph build.  The
+	// graph build then performs operations like expanding Gateway-direct
+	// Listeners and ListenerSet Listeners into separate graph nodes.
+
 	// At this point, the GatewayClass is managed by Cilium, so Gateway-level validations are safe to run.
 	if ref := gw.Spec.Infrastructure; ref != nil && ref.ParametersRef != nil {
 		setGatewayAccepted(gw, false, "Invalid Gateway parameters: spec.infrastructure.parametersRef is not supported", gatewayv1.GatewayReasonInvalidParameters)
@@ -126,10 +131,19 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
-	// TODO(ajs)
-	// Why are we calling a function here called "resolvedAllowedListeners"
-	// All validation of this type should be performed while building the graph
-	mergedListeners, attachedListenerSets, err := r.resolveAllowedListeners(ctx, scopedLog, gw)
+	// Load phase: gather every ListenerSet that names this Gateway as a parent
+	// through the indexed lookup, unfiltered by the allowedListeners policy.
+	allAttachedListenerSets, err := r.loadAttachedListenerSets(ctx, gw)
+	if err != nil {
+		scopedLog.ErrorContext(ctx, "Unable to list ListenerSets", logfields.Error, err)
+		return r.handleReconcileErrorWithStatus(ctx, err, original, gw)
+	}
+
+	// resolveAllowedListeners admits the ListenerSets permitted by the Gateway's
+	// allowedListeners policy and writes NotAllowed status for the rest. The
+	// admitted set feeds the graph build and Route lookups; the ingestion
+	// listener set is derived from the validated graph later (buildMergedListeners).
+	attachedListenerSets, err := r.resolveAllowedListeners(ctx, scopedLog, gw, allAttachedListenerSets)
 	if err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to resolve allowed ListenerSet listeners", logfields.Error, err)
 		return r.handleReconcileErrorWithStatus(ctx, err, original, gw)
@@ -262,7 +276,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	btlspMap := helpers.BuildBackendTLSPolicyLookup(btlspList)
 
 	var namespaces []corev1.Namespace
-	if hasAllowedRoutesNamespaceSelector(gw, attachedListenerSets) {
+	if hasNamespaceLabelSelector(gw, attachedListenerSets) {
 		namespaceList := &corev1.NamespaceList{}
 		if err := r.Client.List(ctx, namespaceList); err != nil {
 			scopedLog.ErrorContext(ctx, "Unable to list Namespaces", logfields.Error, err)
@@ -313,6 +327,15 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		Services:            servicesList.Items,
 		BackendTLSPolicyMap: btlspMap,
 	})
+	// Graph validation passes, each scoped to a distinct concern:
+	//   - ValidateAllowedListenerSets: admits or rejects whole ListenerSets per
+	//     the Gateway's spec.allowedListeners policy (ListenerSet granularity).
+	//   - ResolveAllowedRouteNamespaces: resolves, per listener, which
+	//     namespaces' Routes may attach per allowedRoutes.namespaces. This is a
+	//     step toward performing namespace-aware Route validation in the graph.
+	//   - ValidateListeners: per-listener conflict, protocol, and TLS checks.
+	graph.ValidateAllowedListenerSets(graphRoot)
+	graph.ResolveAllowedRouteNamespaces(graphRoot)
 	graph.ValidateListeners(graphRoot, grants.Items, func(namespace, name string) error {
 		return validateTLSSecret(ctx, r.Client, namespace, name)
 	})
@@ -384,7 +407,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		ServiceImports:             serviceImportsList.Items,
 		ReferenceGrants:            grants.Items,
 		BackendTLSPolicyMap:        btlspMap,
-		MergedListeners:            mergedListeners,
+		MergedListeners:            buildMergedListeners(graphRoot),
 	})
 
 	listenersStatus := r.setListenerStatus(ctx, gw, graphRoot, httpRouteList, tlsRouteList, grpcRouteList, tcpRouteList, udpRouteList, namespaceLabels)
@@ -466,7 +489,13 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	return controllerruntime.Success()
 }
 
-func hasAllowedRoutesNamespaceSelector(gw *gatewayv1.Gateway, attachedListenerSets []gatewayv1.ListenerSet) bool {
+func hasNamespaceLabelSelector(gw *gatewayv1.Gateway, attachedListenerSets []gatewayv1.ListenerSet) bool {
+	if gw.Spec.AllowedListeners != nil &&
+		gw.Spec.AllowedListeners.Namespaces != nil &&
+		gw.Spec.AllowedListeners.Namespaces.From != nil &&
+		*gw.Spec.AllowedListeners.Namespaces.From == gatewayv1.NamespacesFromSelector {
+		return true
+	}
 	for _, listener := range gw.Spec.Listeners {
 		if listener.AllowedRoutes == nil || listener.AllowedRoutes.Namespaces == nil {
 			continue
@@ -760,37 +789,40 @@ func (r *gatewayReconciler) updateListenerSetStatus(ctx context.Context, origina
 	return r.Client.Status().Update(ctx, new)
 }
 
-func (r *gatewayReconciler) resolveAllowedListeners(
+// loadAttachedListenerSets returns every ListenerSet that names gw as a parent,
+// sorted by precedence. The result is unfiltered by the Gateway's
+// allowedListeners policy; allowed-ness is decided later during validation.
+func (r *gatewayReconciler) loadAttachedListenerSets(
 	ctx context.Context,
-	scopedLog *slog.Logger,
 	gw *gatewayv1.Gateway,
-) ([]ingestion.ListenerWithContext, []gatewayv1.ListenerSet, error) {
-	gwSource := gatewayFQR(gw)
-
-	var merged []ingestion.ListenerWithContext
-	for _, l := range gw.Spec.Listeners {
-		merged = append(merged, ingestion.ListenerWithContext{
-			Listener: l,
-			Source:   gwSource,
-		})
-	}
-
+) ([]gatewayv1.ListenerSet, error) {
 	if !helpers.HasListenerSetSupport(r.Client.Scheme()) {
-		return merged, nil, nil
+		return nil, nil
 	}
 
 	lsList := &gatewayv1.ListenerSetList{}
 	if err := r.Client.List(ctx, lsList, &client.ListOptions{
 		FieldSelector: fields.OneTermEqualSelector(indexers.ListenerSetGatewayIndex, client.ObjectKeyFromObject(gw).String()),
 	}); err != nil {
-		return nil, nil, fmt.Errorf("failed to list ListenerSets: %w", err)
+		return nil, err
 	}
 
-	sortListenerSets(lsList.Items)
+	return lsList.Items, nil
+}
+
+func (r *gatewayReconciler) resolveAllowedListeners(
+	ctx context.Context,
+	scopedLog *slog.Logger,
+	gw *gatewayv1.Gateway,
+	attachedListenerSets []gatewayv1.ListenerSet,
+) ([]gatewayv1.ListenerSet, error) {
+	if !helpers.HasListenerSetSupport(r.Client.Scheme()) {
+		return nil, nil
+	}
 
 	var attachedSets []gatewayv1.ListenerSet
-	for i := range lsList.Items {
-		ls := &lsList.Items[i]
+	for i := range attachedListenerSets {
+		ls := &attachedListenerSets[i]
 		if !isListenerSetAllowed(ctx, r.Client, gw, ls, scopedLog) {
 			original := ls.DeepCopy()
 			setListenerSetAccepted(ls, false, "ListenerSet is not allowed by the Gateway's allowedListeners policy", gatewayv1.ListenerSetReasonNotAllowed)
@@ -801,46 +833,40 @@ func (r *gatewayReconciler) resolveAllowedListeners(
 			continue
 		}
 		attachedSets = append(attachedSets, *ls)
+	}
 
-		lsSource := listenerSetFQR(ls)
-		for _, entry := range ls.Spec.Listeners {
-			listener := helpers.ListenerEntryToListener(entry)
+	return attachedSets, nil
+}
+
+// buildMergedListeners derives the ingestion listener set from the validated
+// graph: every Gateway listener plus the listeners of each admitted ListenerSet,
+// each carrying the namespaces resolved by graph.ResolveAllowedRouteNamespaces.
+// Building this from the graph keeps Gateway-direct and ListenerSet listeners
+// uniform and removes the need for a separate hand-built merge.
+func buildMergedListeners(graphRoot *graph.GatewayClassNode) []ingestion.ListenerWithContext {
+	gw := graphRoot.Gateway
+
+	var merged []ingestion.ListenerWithContext
+	for _, ln := range gw.Listeners {
+		merged = append(merged, ingestion.ListenerWithContext{
+			Listener:          ln.Listener,
+			Source:            ln.Source,
+			AllowedNamespaces: ln.AllowedRouteNamespaces,
+		})
+	}
+	for _, lsn := range gw.ListenerSets {
+		if !lsn.Allowed {
+			continue
+		}
+		for _, ln := range lsn.Listeners {
 			merged = append(merged, ingestion.ListenerWithContext{
-				Listener:          listener,
-				Source:            lsSource,
-				AllowedNamespaces: resolveAllowedNamespaces(ctx, r.Client, ls.GetNamespace(), listener, scopedLog),
+				Listener:          ln.Listener,
+				Source:            ln.Source,
+				AllowedNamespaces: ln.AllowedRouteNamespaces,
 			})
 		}
 	}
-
-	return merged, attachedSets, nil
-}
-
-// resolveAllowedNamespaces resolves a listener's allowedRoutes.namespaces policy
-// into a set of namespace names. Returns nil to indicate all namespaces are allowed.
-func resolveAllowedNamespaces(ctx context.Context, c client.Client, listenerNamespace string, listener gatewayv1.Listener, logger *slog.Logger) map[string]struct{} {
-	if listener.AllowedRoutes == nil || listener.AllowedRoutes.Namespaces == nil || listener.AllowedRoutes.Namespaces.From == nil {
-		return map[string]struct{}{listenerNamespace: {}}
-	}
-	switch *listener.AllowedRoutes.Namespaces.From {
-	case gatewayv1.NamespacesFromAll:
-		return nil
-	case gatewayv1.NamespacesFromSame:
-		return map[string]struct{}{listenerNamespace: {}}
-	case gatewayv1.NamespacesFromSelector:
-		nsList := &corev1.NamespaceList{}
-		selector, _ := metav1.LabelSelectorAsSelector(listener.AllowedRoutes.Namespaces.Selector)
-		if err := c.List(ctx, nsList, client.MatchingLabelsSelector{Selector: selector}); err != nil {
-			logger.ErrorContext(ctx, "Unable to list namespaces for listener", logfields.Error, err)
-			return map[string]struct{}{listenerNamespace: {}}
-		}
-		allowed := make(map[string]struct{})
-		for _, ns := range nsList.Items {
-			allowed[ns.Name] = struct{}{}
-		}
-		return allowed
-	}
-	return map[string]struct{}{listenerNamespace: {}}
+	return merged
 }
 
 // The Gateway-level filters only select Routes with an accepted parent belonging
