@@ -253,3 +253,50 @@ func TestAllowedRouteNamespaces(t *testing.T) {
 		})
 	}
 }
+
+func TestGatewayAllowsListenerSet(t *testing.T) {
+	none := gatewayv1.NamespacesFromNone
+	all := gatewayv1.NamespacesFromAll
+	same := gatewayv1.NamespacesFromSame
+	selector := gatewayv1.NamespacesFromSelector
+
+	namespaces := []corev1.Namespace{
+		{ObjectMeta: metav1.ObjectMeta{Name: "infra-ns", Labels: map[string]string{"team": "infra"}}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "other-ns", Labels: map[string]string{"team": "platform"}}},
+	}
+
+	gwWith := func(from *gatewayv1.FromNamespaces, sel *metav1.LabelSelector) gatewayv1.Gateway {
+		gw := gatewayv1.Gateway{ObjectMeta: metav1.ObjectMeta{Namespace: "gw-ns"}}
+		if from != nil || sel != nil {
+			gw.Spec.AllowedListeners = &gatewayv1.AllowedListeners{
+				Namespaces: &gatewayv1.ListenerNamespaces{From: from, Selector: sel},
+			}
+		}
+		return gw
+	}
+	lsIn := func(ns string) gatewayv1.ListenerSet {
+		return gatewayv1.ListenerSet{ObjectMeta: metav1.ObjectMeta{Namespace: ns}}
+	}
+	infraSelector := &metav1.LabelSelector{MatchLabels: map[string]string{"team": "infra"}}
+
+	tests := []struct {
+		name string
+		gw   gatewayv1.Gateway
+		ls   gatewayv1.ListenerSet
+		want bool
+	}{
+		{"no allowedListeners rejects", gwWith(nil, nil), lsIn("gw-ns"), false},
+		{"From None rejects", gwWith(&none, nil), lsIn("gw-ns"), false},
+		{"From All allows any", gwWith(&all, nil), lsIn("other-ns"), true},
+		{"From Same allows same namespace", gwWith(&same, nil), lsIn("gw-ns"), true},
+		{"From Same rejects other namespace", gwWith(&same, nil), lsIn("other-ns"), false},
+		{"From Selector allows matching namespace", gwWith(&selector, infraSelector), lsIn("infra-ns"), true},
+		{"From Selector rejects non-matching namespace", gwWith(&selector, infraSelector), lsIn("other-ns"), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, GatewayAllowsListenerSet(tt.gw, tt.ls, namespaces))
+		})
+	}
+}

@@ -125,3 +125,40 @@ func namespacesMatchingSelector(
 	}
 	return allowed
 }
+
+// GatewayAllowsListenerSet evaluates the Gateway's spec.allowedListeners policy
+// against a ListenerSet, using the provided Namespaces slice for the Selector
+// case. It is a pure, client-free check: the caller must supply the namespaces
+// (all of them) whenever the policy uses a selector.
+func GatewayAllowsListenerSet(
+	gw gatewayv1.Gateway,
+	ls gatewayv1.ListenerSet,
+	namespaces []corev1.Namespace,
+) bool {
+	if gw.Spec.AllowedListeners == nil {
+		return false
+	}
+	ns := gw.Spec.AllowedListeners.Namespaces
+	if ns == nil || ns.From == nil {
+		return false
+	}
+	switch *ns.From {
+	case gatewayv1.NamespacesFromNone:
+		return false
+	case gatewayv1.NamespacesFromAll:
+		return true
+	case gatewayv1.NamespacesFromSame:
+		return ls.GetNamespace() == gw.GetNamespace()
+	case gatewayv1.NamespacesFromSelector:
+		selector, err := metav1.LabelSelectorAsSelector(ns.Selector)
+		if err != nil {
+			return false
+		}
+		for _, n := range namespaces {
+			if n.Name == ls.GetNamespace() && selector.Matches(labels.Set(n.Labels)) {
+				return true
+			}
+		}
+	}
+	return false
+}

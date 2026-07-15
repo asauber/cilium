@@ -8,9 +8,7 @@ import (
 	"strings"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
@@ -33,7 +31,7 @@ type TLSSecretValidator func(namespace, name string) error
 func ValidateAllowedListenerSets(root *GatewayClassNode) {
 	gw := root.Gateway
 	for _, lsn := range gw.ListenerSets {
-		lsn.Allowed = gatewayAllowsListenerSet(gw.Gateway, lsn.ListenerSet, gw.Namespaces)
+		lsn.Allowed = helpers.GatewayAllowsListenerSet(gw.Gateway, lsn.ListenerSet, gw.Namespaces)
 	}
 }
 
@@ -96,42 +94,6 @@ func ValidateListeners(
 			}
 		}
 	}
-}
-
-// gatewayAllowsListenerSet evaluates the Gateway's spec.allowedListeners policy
-// against a ListenerSet using the in-graph Namespaces slice. It is the pure,
-// client-free equivalent of the reconciler's allowedListeners check.
-func gatewayAllowsListenerSet(
-	gw gatewayv1.Gateway,
-	ls gatewayv1.ListenerSet,
-	namespaces []corev1.Namespace,
-) bool {
-	if gw.Spec.AllowedListeners == nil {
-		return false
-	}
-	ns := gw.Spec.AllowedListeners.Namespaces
-	if ns == nil || ns.From == nil {
-		return false
-	}
-	switch *ns.From {
-	case gatewayv1.NamespacesFromNone:
-		return false
-	case gatewayv1.NamespacesFromAll:
-		return true
-	case gatewayv1.NamespacesFromSame:
-		return ls.GetNamespace() == gw.GetNamespace()
-	case gatewayv1.NamespacesFromSelector:
-		selector, err := metav1.LabelSelectorAsSelector(ns.Selector)
-		if err != nil {
-			return false
-		}
-		for _, n := range namespaces {
-			if n.Name == ls.GetNamespace() && selector.Matches(labels.Set(n.Labels)) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func validateListenerNode(

@@ -4,11 +4,8 @@
 package gateway_api
 
 import (
-	"context"
-	"log/slog"
 	"maps"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -16,7 +13,6 @@ import (
 
 	gatewayapihelpers "github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
 	"github.com/cilium/cilium/operator/pkg/model"
-	"github.com/cilium/cilium/pkg/logging/logfields"
 )
 
 const (
@@ -183,48 +179,6 @@ func setMergedLabelsAndAnnotations(temp, desired client.Object) {
 	temp.SetLabels(mergeMap(temp.GetLabels(), desired.GetLabels()))
 }
 
-// isListenerSetAllowed determines if a Gateway allows a given ListenerSet
-func isListenerSetAllowed(
-	ctx context.Context,
-	c client.Client,
-	gw *gatewayv1.Gateway,
-	ls *gatewayv1.ListenerSet,
-	logger *slog.Logger,
-) bool {
-	if gw.Spec.AllowedListeners == nil {
-		return false
-	}
-	ns := gw.Spec.AllowedListeners.Namespaces
-	if ns == nil || ns.From == nil {
-		return false
-	}
-	switch *ns.From {
-	case gatewayv1.NamespacesFromNone:
-		return false
-	case gatewayv1.NamespacesFromAll:
-		return true
-	case gatewayv1.NamespacesFromSame:
-		return ls.GetNamespace() == gw.GetNamespace()
-	case gatewayv1.NamespacesFromSelector:
-		nsList := &corev1.NamespaceList{}
-		selector, err := metav1.LabelSelectorAsSelector(ns.Selector)
-		if err != nil {
-			logger.ErrorContext(ctx, "Unable to parse namespace selector", logfields.Error, err)
-			return false
-		}
-		if err := c.List(ctx, nsList, client.MatchingLabelsSelector{Selector: selector}); err != nil {
-			logger.ErrorContext(ctx, "Unable to list namespaces", logfields.Error, err)
-			return false
-		}
-		for _, n := range nsList.Items {
-			if n.Name == ls.GetNamespace() {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 func gatewayFQR(gw *gatewayv1.Gateway) model.FullyQualifiedResource {
 	return model.FullyQualifiedResource{
 		Name:      gw.GetName(),
@@ -246,7 +200,6 @@ func listenerSetFQR(ls *gatewayv1.ListenerSet) model.FullyQualifiedResource {
 		UID:       string(ls.GetUID()),
 	}
 }
-
 
 func deduplicateHTTPRoutes(routes []gatewayv1.HTTPRoute) []gatewayv1.HTTPRoute {
 	seen := make(map[types.NamespacedName]struct{}, len(routes))
