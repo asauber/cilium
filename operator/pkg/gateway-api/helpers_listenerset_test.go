@@ -51,7 +51,7 @@ func Test_sortListenerSets(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			root := graph.BuildRoot(&gatewayv1.Gateway{}, &gatewayv1.GatewayClass{}, nil)
+			root := graph.BuildRoot(&gatewayv1.Gateway{}, &gatewayv1.GatewayClass{})
 			root.AddListenerSets(&gatewayv1.ListenerSetList{Items: tt.input})
 			var got []string
 			for _, listenerSet := range root.GatewayClass.Gateway.ListenerSets {

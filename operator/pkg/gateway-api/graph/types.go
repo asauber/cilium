@@ -8,9 +8,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
-
-	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
-	"github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2alpha1"
 )
 
 type GatewayRootNode struct {
@@ -18,9 +15,8 @@ type GatewayRootNode struct {
 }
 
 type GatewayClassNode struct {
-	GatewayClass       *gatewayv1.GatewayClass
-	GatewayClassConfig *v2alpha1.CiliumGatewayClassConfig
-	Gateway            *GatewayNode
+	GatewayClass *gatewayv1.GatewayClass
+	Gateway      *GatewayNode
 }
 
 type GatewayNode struct {
@@ -29,11 +25,9 @@ type GatewayNode struct {
 	Listeners    []*ListenerNode
 	ListenerSets []*ListenerSetNode
 
-	ReferenceGrants     []*gatewayv1.ReferenceGrant
-	Services            []*corev1.Service
-	Namespaces          []*corev1.Namespace
-	BackendTLSPolicyMap helpers.BackendTLSPolicyServiceMap
-	TLSSecrets          map[types.NamespacedName]*TLSSecret
+	ReferenceGrants []*gatewayv1.ReferenceGrant
+	Namespaces      []*corev1.Namespace
+	TLSSecrets      map[types.NamespacedName]*TLSSecret
 }
 
 type TLSSecret struct {

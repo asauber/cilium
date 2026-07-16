@@ -104,7 +104,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return controllerruntime.Success()
 	}
 
-	graphRoot := graph.BuildRoot(gw, gwc, r.getGatewayClassConfig(ctx, gwc))
+	graphRoot := graph.BuildRoot(gw, gwc)
 	if err := graphRoot.ValidateGatewayNode(); err != nil {
 		return r.handleReconcileErrorWithStatus(ctx, err, original, graphRoot.GetGateway())
 	}
@@ -300,14 +300,12 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	)
 	graphRoot.AddReferenceGrants(grants)
 	graphRoot.AddNamespaces(namespaceList)
-	graphRoot.AddServices(servicesList)
-	graphRoot.AddBackendTLSPolicyMap(btlspMap)
 	graphRoot.AddTLSSecrets(tlsSecrets)
 	graphRoot.PopulateAllowedRouteNamespaces()
 
 	graphRoot.ValidateAllowedListenerSets()
 	graphRoot.ValidateListeners()
-	graphRoot.DebugLog(scopedLog)
+	graphRoot.DebugLog(ctx, scopedLog)
 
 	// A Route whose parent names a ListenerSet rejected by the graph
 	// (allowedListeners) must not be accepted by it. The route checks skip such

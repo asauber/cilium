@@ -4,12 +4,13 @@
 package graph
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 )
 
-func (root *GatewayRootNode) DebugLog(log *slog.Logger) {
-	if !log.Enabled(nil, slog.LevelDebug) {
+func (root *GatewayRootNode) DebugLog(ctx context.Context, log *slog.Logger) {
+	if !log.Enabled(ctx, slog.LevelDebug) {
 		return
 	}
 

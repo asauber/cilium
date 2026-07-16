@@ -9,19 +9,16 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
-	"github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2alpha1"
 )
 
 func BuildRoot(
 	gateway *gatewayv1.Gateway,
 	gatewayClass *gatewayv1.GatewayClass,
-	gatewayClassConfig *v2alpha1.CiliumGatewayClassConfig,
 ) *GatewayRootNode {
 	root := &GatewayRootNode{
 		GatewayClass: &GatewayClassNode{
-			GatewayClass:       gatewayClass,
-			GatewayClassConfig: gatewayClassConfig,
-			Gateway:            &GatewayNode{Gateway: gateway},
+			GatewayClass: gatewayClass,
+			Gateway:      &GatewayNode{Gateway: gateway},
 		},
 	}
 	root.addGatewayListeners()
@@ -100,17 +97,6 @@ func (root *GatewayRootNode) PopulateAllowedRouteNamespaces() {
 				listener.Listener, listener.ListenerSet.GetNamespace(), namespaces)
 		}
 	}
-}
-
-func (root *GatewayRootNode) AddServices(services *corev1.ServiceList) {
-	root.GatewayClass.Gateway.Services = make([]*corev1.Service, len(services.Items))
-	for index := range services.Items {
-		root.GatewayClass.Gateway.Services[index] = &services.Items[index]
-	}
-}
-
-func (root *GatewayRootNode) AddBackendTLSPolicyMap(policyMap helpers.BackendTLSPolicyServiceMap) {
-	root.GatewayClass.Gateway.BackendTLSPolicyMap = policyMap
 }
 
 func (root *GatewayRootNode) AddTLSSecrets(validations map[types.NamespacedName]helpers.TLSSecretValidation) {

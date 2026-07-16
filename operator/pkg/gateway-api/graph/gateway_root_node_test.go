@@ -21,7 +21,7 @@ func TestGatewayRootNodeAddListenerSets(t *testing.T) {
 	listenerSets := &gatewayv1.ListenerSetList{Items: []gatewayv1.ListenerSet{
 		{ObjectMeta: metav1.ObjectMeta{Name: "listeners", Namespace: "default"}},
 	}}
-	root := BuildRoot(&gatewayv1.Gateway{}, &gatewayv1.GatewayClass{}, nil)
+	root := BuildRoot(&gatewayv1.Gateway{}, &gatewayv1.GatewayClass{})
 
 	root.AddListenerSets(listenerSets)
 
@@ -54,16 +54,14 @@ func TestGatewayRootNodeRetainsSourceResources(t *testing.T) {
 	}}}
 	grants := &gatewayv1.ReferenceGrantList{Items: []gatewayv1.ReferenceGrant{{}}}
 	namespaces := &corev1.NamespaceList{Items: []corev1.Namespace{{}}}
-	services := &corev1.ServiceList{Items: []corev1.Service{{}}}
 	secret := &corev1.Secret{}
 	secretKey := types.NamespacedName{Name: "secret"}
 
-	root := BuildRoot(gateway, gatewayClass, nil)
+	root := BuildRoot(gateway, gatewayClass)
 	root.AddListenerSets(listenerSets)
 	root.AddRoutes(httpRoutes, grpcRoutes, tlsRoutes, tcpRoutes, udpRoutes)
 	root.AddReferenceGrants(grants)
 	root.AddNamespaces(namespaces)
-	root.AddServices(services)
 	root.AddTLSSecrets(map[types.NamespacedName]helpers.TLSSecretValidation{
 		secretKey: {Secret: secret},
 	})
@@ -79,7 +77,6 @@ func TestGatewayRootNodeRetainsSourceResources(t *testing.T) {
 	assert.Same(t, &udpRoutes.Items[0], listener.UDPRoutes[0].Route)
 	assert.Same(t, &grants.Items[0], root.GatewayClass.Gateway.ReferenceGrants[0])
 	assert.Same(t, &namespaces.Items[0], root.GatewayClass.Gateway.Namespaces[0])
-	assert.Same(t, &services.Items[0], root.GatewayClass.Gateway.Services[0])
 	assert.Same(t, secret, root.GatewayClass.Gateway.TLSSecrets[secretKey].Secret)
 }
 
@@ -89,7 +86,7 @@ func TestGatewayRootNodeBuildMergedListeners(t *testing.T) {
 			{Name: "gateway-valid"},
 			{Name: "gateway-invalid"},
 		},
-	}}, &gatewayv1.GatewayClass{}, nil)
+	}}, &gatewayv1.GatewayClass{})
 	root.AddListenerSets(&gatewayv1.ListenerSetList{Items: []gatewayv1.ListenerSet{
 		{Spec: gatewayv1.ListenerSetSpec{Listeners: []gatewayv1.ListenerEntry{
 			{Name: "listenerset-valid"},
@@ -119,7 +116,7 @@ func TestGatewayRootNodeSetListenerSetStatuses(t *testing.T) {
 			Listeners: []gatewayv1.ListenerEntry{{Name: "invalid"}},
 		}},
 	}}
-	root := BuildRoot(gateway, &gatewayv1.GatewayClass{}, nil)
+	root := BuildRoot(gateway, &gatewayv1.GatewayClass{})
 	root.AddListenerSets(listenerSets)
 
 	allowed := root.GatewayClass.Gateway.ListenerSets[0]
@@ -152,7 +149,7 @@ func TestGatewayRootNodeSetListenerSetStatusesClearsZeroCount(t *testing.T) {
 			Listeners: []gatewayv1.ListenerEntry{{Name: "invalid"}},
 		},
 	}}}
-	root := BuildRoot(gateway, &gatewayv1.GatewayClass{}, nil)
+	root := BuildRoot(gateway, &gatewayv1.GatewayClass{})
 	root.AddListenerSets(listenerSets)
 
 	root.SetListenerSetStatuses(nil)
@@ -217,7 +214,7 @@ func TestGatewayRootNodeHasNamespaceLabelSelector(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			root := BuildRoot(&test.gateway, &gatewayv1.GatewayClass{}, nil)
+			root := BuildRoot(&test.gateway, &gatewayv1.GatewayClass{})
 			root.AddListenerSets(&gatewayv1.ListenerSetList{Items: test.listenerSets})
 
 			assert.Equal(t, test.want, root.HasNamespaceLabelSelector())
