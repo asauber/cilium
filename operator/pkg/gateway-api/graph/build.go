@@ -33,7 +33,7 @@ type BuildInput struct {
 	BackendTLSPolicyMap helpers.BackendTLSPolicyServiceMap
 }
 
-func Build(input BuildInput) *GatewayClassNode {
+func Build(input BuildInput) *GatewayRootNode {
 	listenerSets := make([]gatewayv1.ListenerSet, len(input.ListenerSets))
 	copy(listenerSets, input.ListenerSets)
 	SortListenerSets(listenerSets)
@@ -90,7 +90,7 @@ func Build(input BuildInput) *GatewayClassNode {
 		gwNode.ListenerSets = append(gwNode.ListenerSets, lsNode)
 	}
 
-	return &GatewayClassNode{
+	return &GatewayRootNode{
 		GatewayClass:       input.GatewayClass,
 		GatewayClassConfig: input.GatewayClassConfig,
 		Gateway:            gwNode,

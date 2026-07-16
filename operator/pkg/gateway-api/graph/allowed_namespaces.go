@@ -17,7 +17,7 @@ import (
 // A nil AllowedRouteNamespaces means all namespaces are allowed (From: All); an
 // empty set means none are (From: None). The resolution is shared with
 // ingestion via helpers.AllowedRouteNamespaces.
-func ResolveAllowedRouteNamespaces(root *GatewayClassNode) {
+func ResolveAllowedRouteNamespaces(root *GatewayRootNode) {
 	gw := root.Gateway
 	for _, ln := range gw.Listeners {
 		ln.AllowedRouteNamespaces = helpers.AllowedRouteNamespaces(

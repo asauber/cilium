@@ -8,7 +8,7 @@ import (
 	"log/slog"
 )
 
-func DebugLog(log *slog.Logger, root *GatewayClassNode) {
+func DebugLog(log *slog.Logger, root *GatewayRootNode) {
 	if !log.Enabled(nil, slog.LevelDebug) {
 		return
 	}

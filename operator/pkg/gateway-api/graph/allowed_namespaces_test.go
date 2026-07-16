@@ -32,7 +32,7 @@ func Test_ResolveAllowedRouteNamespaces(t *testing.T) {
 	namespaces := []corev1.Namespace{
 		{ObjectMeta: metav1.ObjectMeta{Name: "prod", Labels: map[string]string{"env": "prod"}}},
 	}
-	root := &GatewayClassNode{
+	root := &GatewayRootNode{
 		Gateway: &GatewayNode{
 			Namespaces: namespaces,
 			Listeners: []*ListenerNode{

@@ -28,7 +28,7 @@ type TLSSecretValidator func(namespace, name string) error
 //
 // It must run before ValidateListeners, which relies on the Allowed field to
 // decide whether to validate a ListenerSet's listeners.
-func ValidateAllowedListenerSets(root *GatewayClassNode) {
+func ValidateAllowedListenerSets(root *GatewayRootNode) {
 	gw := root.Gateway
 	for _, lsn := range gw.ListenerSets {
 		lsn.Allowed = helpers.GatewayAllowsListenerSet(gw.Gateway, lsn.ListenerSet, gw.Namespaces)
@@ -39,7 +39,7 @@ func ValidateAllowedListenerSets(root *GatewayClassNode) {
 // all ListenerNodes in the graph. It sets Valid, Conditions, and
 // SupportedKinds on each ListenerNode.
 func ValidateListeners(
-	root *GatewayClassNode,
+	root *GatewayRootNode,
 	grants []gatewayv1.ReferenceGrant,
 	validateTLSSecret TLSSecretValidator,
 ) {

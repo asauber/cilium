@@ -6,7 +6,6 @@ package gateway_api
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -75,7 +74,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	gw := original.DeepCopy()
 
-	// Step 2: Gather all required information for the ingestion model
+	// Step 2: Gather all required information to build the Gateway graph
 	gwc := &gatewayv1.GatewayClass{}
 	if err := r.Client.Get(ctx, client.ObjectKey{Name: string(gw.Spec.GatewayClassName)}, gwc); err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -105,43 +104,24 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return controllerruntime.Success()
 	}
 
-	// TODO(ajs) Make this phase purely a gather of all pre-indexed objects.  We
-	// feed all explicitly indexed objects into the Gateway graph build.  The
-	// graph build then performs operations like expanding Gateway-direct
-	// Listeners and ListenerSet Listeners into separate graph nodes.
-
-	// At this point, the GatewayClass is managed by Cilium, so Gateway-level validations are safe to run.
-	if ref := gw.Spec.Infrastructure; ref != nil && ref.ParametersRef != nil {
-		setGatewayAccepted(gw, false, "Invalid Gateway parameters: spec.infrastructure.parametersRef is not supported", gatewayv1.GatewayReasonInvalidParameters)
-		setGatewayProgrammed(gw, metav1.ConditionUnknown, "Waiting for Accepted condition to be True", gatewayv1.GatewayReasonPending)
-		return r.handleReconcileErrorWithStatus(ctx, errors.New("Invalid Gateway"), original, gw)
+	graphRoot := graph.BuildRoot(*gw, *gwc, r.getGatewayClassConfig(ctx, gwc))
+	if err := graphRoot.ValidateGatewayNode(); err != nil {
+		return r.handleReconcileErrorWithStatus(ctx, err, original, graphRoot.GetGateway())
 	}
 
-	if ref := gwc.Spec.ParametersRef; ref != nil {
-		if !isParameterRefSupported(ref) {
-			setGatewayAccepted(gw, false, "Invalid GatewayClass parameters: spec.parametersRef.kind must be CiliumGatewayClassConfig", gatewayv1.GatewayReasonInvalidParameters)
-			setGatewayProgrammed(gw, metav1.ConditionUnknown, "Waiting for Accepted condition to be True", gatewayv1.GatewayReasonPending)
-			return r.handleReconcileErrorWithStatus(ctx, errors.New("Invalid GatewayClass"), original, gw)
-		}
-
-		if !hasNamespacedName(ref) {
-			setGatewayAccepted(gw, false, "Invalid GatewayClass parametersRef: both name and namespace are required", gatewayv1.GatewayReasonInvalidParameters)
-			setGatewayProgrammed(gw, metav1.ConditionUnknown, "Waiting for Accepted condition to be True", gatewayv1.GatewayReasonPending)
-			return r.handleReconcileErrorWithStatus(ctx, errors.New("Invalid GatewayClass"), original, gw)
-		}
+	if err := graphRoot.ValidateGatewayClassNode(); err != nil {
+		return r.handleReconcileErrorWithStatus(ctx, err, original, graphRoot.GetGateway())
 	}
 
 	// Load phase: gather every ListenerSet that names this Gateway as a parent
-	// through the indexed lookup, unfiltered by the allowedListeners policy.
+	// TODO(ajs) remove this function, there would be too much temptation to add logic into the function
+	// TODO(ajs) this reconcile function should be doing pure loads at this point
 	allAttachedListenerSets, err := r.loadAttachedListenerSets(ctx, gw)
 	if err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to list ListenerSets", logfields.Error, err)
 		return r.handleReconcileErrorWithStatus(ctx, err, original, gw)
 	}
 
-	// Load Namespaces up front when any allowedListeners or allowedRoutes
-	// selector needs them. The graph evaluates selector policies against this
-	// in-memory slice rather than the client.
 	var namespaces []corev1.Namespace
 	if hasNamespaceLabelSelector(gw, allAttachedListenerSets) {
 		namespaceList := &corev1.NamespaceList{}
@@ -151,7 +131,6 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 		namespaces = namespaceList.Items
 	}
-	namespaceLabels := helpers.NewNamespaceLabelIndex(namespaces)
 
 	httpRouteList := &gatewayv1.HTTPRouteList{}
 	if err := r.Client.List(ctx, httpRouteList, &client.ListOptions{
@@ -305,9 +284,9 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			" At a future date this annotation will be removed if no spec.addresses are set.", gw.GetNamespace(), gw.GetName(), annotation.LBIPAMIPKeyAlias))
 	}
 
-	graphRoot := graph.Build(graph.BuildInput{
+	graphRoot = graph.Build(graph.BuildInput{
 		GatewayClass:        *gwc,
-		GatewayClassConfig:  r.getGatewayClassConfig(ctx, gwc),
+		GatewayClassConfig:  graphRoot.GatewayClassConfig,
 		Gateway:             *gw,
 		ListenerSets:        allAttachedListenerSets,
 		HTTPRoutes:          httpRouteList.Items,
@@ -411,6 +390,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		MergedListeners:            buildMergedListeners(graphRoot),
 	})
 
+	namespaceLabels := helpers.NewNamespaceLabelIndex(namespaces)
 	listenersStatus := r.setListenerStatus(ctx, gw, graphRoot, httpRouteList, tlsRouteList, grpcRouteList, tcpRouteList, udpRouteList, namespaceLabels)
 
 	switch listenersStatus {
@@ -814,7 +794,7 @@ func (r *gatewayReconciler) loadAttachedListenerSets(
 // allowedListenerSets returns the ListenerSets admitted by the graph's
 // ValidateAllowedListenerSets pass. It is used to scope the Gateway-level Route
 // filters after Build.
-func allowedListenerSets(graphRoot *graph.GatewayClassNode) []gatewayv1.ListenerSet {
+func allowedListenerSets(graphRoot *graph.GatewayRootNode) []gatewayv1.ListenerSet {
 	var allowed []gatewayv1.ListenerSet
 	for _, lsn := range graphRoot.Gateway.ListenerSets {
 		if lsn.Allowed {
@@ -827,7 +807,7 @@ func allowedListenerSets(graphRoot *graph.GatewayClassNode) []gatewayv1.Listener
 // notAllowedListenerSets returns the keys of the ListenerSets rejected by the
 // graph's ValidateAllowedListenerSets pass. Route checks use it to skip parents
 // that name a NotAllowed ListenerSet.
-func notAllowedListenerSets(graphRoot *graph.GatewayClassNode) map[types.NamespacedName]struct{} {
+func notAllowedListenerSets(graphRoot *graph.GatewayRootNode) map[types.NamespacedName]struct{} {
 	rejected := make(map[types.NamespacedName]struct{})
 	for _, lsn := range graphRoot.Gateway.ListenerSets {
 		if !lsn.Allowed {
@@ -868,7 +848,7 @@ func checkableParentRefs(refs []gatewayv1.ParentReference, routeNamespace string
 // each carrying the namespaces resolved by graph.ResolveAllowedRouteNamespaces.
 // Building this from the graph keeps Gateway-direct and ListenerSet listeners
 // uniform and removes the need for a separate hand-built merge.
-func buildMergedListeners(graphRoot *graph.GatewayClassNode) []ingestion.ListenerWithContext {
+func buildMergedListeners(graphRoot *graph.GatewayRootNode) []ingestion.ListenerWithContext {
 	gw := graphRoot.Gateway
 
 	var merged []ingestion.ListenerWithContext
@@ -1221,7 +1201,7 @@ const (
 	ListenersStatusAllValid                     ListenersStatus = "AllValid"
 )
 
-func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1.Gateway, graphRoot *graph.GatewayClassNode, httpRoutes *gatewayv1.HTTPRouteList, tlsRoutes *gatewayv1.TLSRouteList, grpcRoutes *gatewayv1.GRPCRouteList, tcpRoutes *gatewayv1.TCPRouteList, udpRoutes *gatewayv1.UDPRouteList, namespaceLabels helpers.NamespaceLabelIndex) ListenersStatus {
+func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1.Gateway, graphRoot *graph.GatewayRootNode, httpRoutes *gatewayv1.HTTPRouteList, tlsRoutes *gatewayv1.TLSRouteList, grpcRoutes *gatewayv1.GRPCRouteList, tcpRoutes *gatewayv1.TCPRouteList, udpRoutes *gatewayv1.UDPRouteList, namespaceLabels helpers.NamespaceLabelIndex) ListenersStatus {
 	validListeners := 0
 	unsupportedProtocolListeners := 0
 	invalidListeners := 0
@@ -1337,7 +1317,7 @@ func (r *gatewayReconciler) verifyGatewayStaticAddresses(gw *gatewayv1.Gateway) 
 func (r *gatewayReconciler) setListenerSetStatuses(
 	ctx context.Context,
 	gw *gatewayv1.Gateway,
-	graphRoot *graph.GatewayClassNode,
+	graphRoot *graph.GatewayRootNode,
 	httpRoutes *gatewayv1.HTTPRouteList,
 	tlsRoutes *gatewayv1.TLSRouteList,
 	grpcRoutes *gatewayv1.GRPCRouteList,

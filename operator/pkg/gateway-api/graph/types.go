@@ -13,7 +13,7 @@ import (
 	"github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2alpha1"
 )
 
-type GatewayClassNode struct {
+type GatewayRootNode struct {
 	GatewayClass       gatewayv1.GatewayClass
 	GatewayClassConfig *v2alpha1.CiliumGatewayClassConfig
 
