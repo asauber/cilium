@@ -143,6 +143,23 @@ func TestGatewayRootNodeSetListenerSetStatuses(t *testing.T) {
 		t, rejected.ListenerSet.Status.Conditions, gatewayv1.ListenerSetConditionAccepted))
 }
 
+func TestGatewayRootNodeSetListenerSetStatusesClearsZeroCount(t *testing.T) {
+	gateway := &gatewayv1.Gateway{}
+	gateway.Status.AttachedListenerSets = ptr.To(int32(1))
+	listenerSets := &gatewayv1.ListenerSetList{Items: []gatewayv1.ListenerSet{{
+		ObjectMeta: metav1.ObjectMeta{Name: "rejected"},
+		Spec: gatewayv1.ListenerSetSpec{
+			Listeners: []gatewayv1.ListenerEntry{{Name: "invalid"}},
+		},
+	}}}
+	root := BuildRoot(gateway, &gatewayv1.GatewayClass{}, nil)
+	root.AddListenerSets(listenerSets)
+
+	root.SetListenerSetStatuses(nil)
+
+	assert.Nil(t, gateway.Status.AttachedListenerSets)
+}
+
 func conditionReason(
 	t *testing.T,
 	conditions []metav1.Condition,
