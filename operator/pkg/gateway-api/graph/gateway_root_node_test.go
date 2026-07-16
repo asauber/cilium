@@ -123,9 +123,10 @@ func TestGatewayRootNodeSetListenerSetStatuses(t *testing.T) {
 	allowed.Allowed = true
 	allowed.Listeners[0].Valid = true
 	allowed.Listeners[0].SupportedKinds = []gatewayv1.RouteGroupKind{{Kind: "HTTPRoute"}}
+	allowed.Listeners[0].AttachedRoutes = 2
 	rejected := root.GatewayClass.Gateway.ListenerSets[1]
 
-	root.SetListenerSetStatuses(map[*ListenerNode]int32{allowed.Listeners[0]: 2})
+	root.SetListenerSetStatuses()
 
 	assert.Same(t, gateway, root.GetGateway())
 	assert.Same(t, &listenerSets.Items[0], allowed.ListenerSet)
@@ -152,7 +153,7 @@ func TestGatewayRootNodeSetListenerSetStatusesClearsZeroCount(t *testing.T) {
 	root := BuildRoot(gateway, &gatewayv1.GatewayClass{})
 	root.AddListenerSets(listenerSets)
 
-	root.SetListenerSetStatuses(nil)
+	root.SetListenerSetStatuses()
 
 	assert.Nil(t, gateway.Status.AttachedListenerSets)
 }

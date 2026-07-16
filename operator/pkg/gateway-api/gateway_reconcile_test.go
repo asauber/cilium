@@ -1071,18 +1071,9 @@ func Test_gatewayReconciler_setListenerStatus(t *testing.T) {
 
 			graphRoot := graph.BuildRoot(gw, &gatewayv1.GatewayClass{})
 			graphRoot.ValidateListeners()
+			graphRoot.AggregateAttachedRoutes()
 
-			gotStatus := r.setListenerStatus(
-				t.Context(),
-				gw,
-				graphRoot,
-				&gatewayv1.HTTPRouteList{},
-				&gatewayv1.TLSRouteList{},
-				&gatewayv1.GRPCRouteList{},
-				&gatewayv1.TCPRouteList{},
-				&gatewayv1.UDPRouteList{},
-				helpers.NewNamespaceLabelIndex(nil),
-			)
+			gotStatus := r.setListenerStatus(gw, graphRoot)
 			require.Equal(t, tt.wantStatus, gotStatus)
 
 			for name, wantCond := range tt.wantListeners {

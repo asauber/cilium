@@ -346,6 +346,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		scopedLog.ErrorContext(ctx, "Unable to update GRPCRoute Status", logfields.Error, err)
 		return controllerruntime.Fail(err)
 	}
+	graphRoot.AggregateAttachedRoutes()
 
 	// The Gateway-level Route filters scope to the admitted ListenerSets read
 	// from the validated graph.
@@ -383,8 +384,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		MergedListeners:            graphRoot.BuildMergedListeners(),
 	})
 
-	namespaceLabels := helpers.NewNamespaceLabelIndex(namespaces)
-	listenersStatus := r.setListenerStatus(ctx, gw, graphRoot, httpRouteList, tlsRouteList, grpcRouteList, tcpRouteList, udpRouteList, namespaceLabels)
+	listenersStatus := r.setListenerStatus(gw, graphRoot)
 
 	switch listenersStatus {
 	case ListenersStatusNoneValid:
@@ -403,7 +403,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// Accepted and Programmed conditions. Those Gateway conditions reflect the
 	// Gateway's local configuration, so valid ListenerSets do not make an
 	// otherwise invalid Gateway accepted or programmed.
-	r.setListenerSetStatuses(ctx, gw, graphRoot, httpRouteList, tlsRouteList, grpcRouteList, tcpRouteList, udpRouteList, namespaceLabels)
+	r.setListenerSetStatuses(ctx, graphRoot)
 
 	// Step 3: Translate the listeners into Cilium model
 	cec, svc, eps, err := r.translator.Translate(m)
@@ -804,36 +804,6 @@ func (r *gatewayReconciler) filterGRPCRoutesByGateway(ctx context.Context, gw *g
 	return filtered
 }
 
-func (r *gatewayReconciler) filterHTTPRoutesByListener(ctx context.Context, gw *gatewayv1.Gateway, listenerNode *graph.ListenerNode, routes []gatewayv1.HTTPRoute, namespaceLabels helpers.NamespaceLabelIndex, attachedListenerSets ...gatewayv1.ListenerSet) []gatewayv1.HTTPRoute {
-	listener := &listenerNode.Listener
-	lsNS := listenerNode.OwnerNamespace()
-	var filtered []gatewayv1.HTTPRoute
-	for _, route := range routes {
-		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, attachedListenerSets) &&
-			listenerisAllowed(lsNS, listener, &route, namespaceLabels) &&
-			len(computeHostsForListener(listener, route.Spec.Hostnames, nil)) > 0 &&
-			listenerNode.ParentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
-			filtered = append(filtered, route)
-		}
-	}
-	return filtered
-}
-
-func (r *gatewayReconciler) filterGRPCRoutesByListener(ctx context.Context, gw *gatewayv1.Gateway, listenerNode *graph.ListenerNode, routes []gatewayv1.GRPCRoute, namespaceLabels helpers.NamespaceLabelIndex, attachedListenerSets ...gatewayv1.ListenerSet) []gatewayv1.GRPCRoute {
-	listener := &listenerNode.Listener
-	lsNS := listenerNode.OwnerNamespace()
-	var filtered []gatewayv1.GRPCRoute
-	for _, route := range routes {
-		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, attachedListenerSets) &&
-			listenerisAllowed(lsNS, listener, &route, namespaceLabels) &&
-			len(computeHostsForListener(listener, route.Spec.Hostnames, nil)) > 0 &&
-			listenerNode.ParentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
-			filtered = append(filtered, route)
-		}
-	}
-	return filtered
-}
-
 // getGatewayClassConfig returns the CiliumGatewayClassConfig referenced by the GatewayClass.
 // If the GatewayClass does not reference a CiliumGatewayClassConfig, it returns nil.
 func (r *gatewayReconciler) getGatewayClassConfig(ctx context.Context, gwc *gatewayv1.GatewayClass) *v2alpha1.CiliumGatewayClassConfig {
@@ -877,49 +847,6 @@ func (r *gatewayReconciler) filterUDPRoutesByGateway(ctx context.Context, gw *ga
 	var filtered []gatewayv1.UDPRoute
 	for _, route := range routes {
 		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, attachedListenerSets) {
-			filtered = append(filtered, route)
-		}
-	}
-	return filtered
-}
-
-func (r *gatewayReconciler) filterTLSRoutesByListener(ctx context.Context, gw *gatewayv1.Gateway, listenerNode *graph.ListenerNode, routes []gatewayv1.TLSRoute, namespaceLabels helpers.NamespaceLabelIndex, attachedListenerSets ...gatewayv1.ListenerSet) []gatewayv1.TLSRoute {
-	listener := &listenerNode.Listener
-	lsNS := listenerNode.OwnerNamespace()
-	var filtered []gatewayv1.TLSRoute
-	for _, route := range routes {
-		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, attachedListenerSets) &&
-			listenerisAllowed(lsNS, listener, &route, namespaceLabels) &&
-			len(computeHostsForListener(listener, route.Spec.Hostnames, nil)) > 0 &&
-			listenerNode.ParentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
-			filtered = append(filtered, route)
-		}
-	}
-	return filtered
-}
-
-func (r *gatewayReconciler) filterTCPRoutesByListener(ctx context.Context, gw *gatewayv1.Gateway, listenerNode *graph.ListenerNode, routes []gatewayv1.TCPRoute, namespaceLabels helpers.NamespaceLabelIndex, attachedListenerSets ...gatewayv1.ListenerSet) []gatewayv1.TCPRoute {
-	listener := &listenerNode.Listener
-	lsNS := listenerNode.OwnerNamespace()
-	var filtered []gatewayv1.TCPRoute
-	for _, route := range routes {
-		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, attachedListenerSets) &&
-			listenerisAllowed(lsNS, listener, &route, namespaceLabels) &&
-			listenerNode.ParentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
-			filtered = append(filtered, route)
-		}
-	}
-	return filtered
-}
-
-func (r *gatewayReconciler) filterUDPRoutesByListener(ctx context.Context, gw *gatewayv1.Gateway, listenerNode *graph.ListenerNode, routes []gatewayv1.UDPRoute, namespaceLabels helpers.NamespaceLabelIndex, attachedListenerSets ...gatewayv1.ListenerSet) []gatewayv1.UDPRoute {
-	listener := &listenerNode.Listener
-	lsNS := listenerNode.OwnerNamespace()
-	var filtered []gatewayv1.UDPRoute
-	for _, route := range routes {
-		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, attachedListenerSets) &&
-			listenerisAllowed(lsNS, listener, &route, namespaceLabels) &&
-			listenerNode.ParentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
 			filtered = append(filtered, route)
 		}
 	}
@@ -1073,7 +1000,7 @@ const (
 	ListenersStatusAllValid                     ListenersStatus = "AllValid"
 )
 
-func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1.Gateway, graphRoot *graph.GatewayRootNode, httpRoutes *gatewayv1.HTTPRouteList, tlsRoutes *gatewayv1.TLSRouteList, grpcRoutes *gatewayv1.GRPCRouteList, tcpRoutes *gatewayv1.TCPRouteList, udpRoutes *gatewayv1.UDPRouteList, namespaceLabels helpers.NamespaceLabelIndex) ListenersStatus {
+func (r *gatewayReconciler) setListenerStatus(gw *gatewayv1.Gateway, graphRoot *graph.GatewayRootNode) ListenersStatus {
 	validListeners := 0
 	unsupportedProtocolListeners := 0
 	invalidListeners := 0
@@ -1089,20 +1016,13 @@ func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1
 			}
 		}
 
-		var attachedRoutes int32
-		attachedRoutes += int32(len(r.filterHTTPRoutesByListener(ctx, gw, ln, httpRoutes.Items, namespaceLabels)))
-		attachedRoutes += int32(len(r.filterGRPCRoutesByListener(ctx, gw, ln, grpcRoutes.Items, namespaceLabels)))
-		attachedRoutes += int32(len(r.filterTLSRoutesByListener(ctx, gw, ln, tlsRoutes.Items, namespaceLabels)))
-		attachedRoutes += int32(len(r.filterTCPRoutesByListener(ctx, gw, ln, tcpRoutes.Items, namespaceLabels)))
-		attachedRoutes += int32(len(r.filterUDPRoutesByListener(ctx, gw, ln, udpRoutes.Items, namespaceLabels)))
-
 		found := false
 		for i := range gw.Status.Listeners {
 			if l.Name == gw.Status.Listeners[i].Name {
 				found = true
 				gw.Status.Listeners[i].SupportedKinds = ln.SupportedKinds
 				gw.Status.Listeners[i].Conditions = ln.Conditions
-				gw.Status.Listeners[i].AttachedRoutes = attachedRoutes
+				gw.Status.Listeners[i].AttachedRoutes = ln.AttachedRoutes
 				break
 			}
 		}
@@ -1111,7 +1031,7 @@ func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1
 				Name:           l.Name,
 				SupportedKinds: ln.SupportedKinds,
 				Conditions:     ln.Conditions,
-				AttachedRoutes: attachedRoutes,
+				AttachedRoutes: ln.AttachedRoutes,
 			})
 		}
 	}
@@ -1168,35 +1088,15 @@ func (r *gatewayReconciler) verifyGatewayStaticAddresses(gw *gatewayv1.Gateway) 
 
 func (r *gatewayReconciler) setListenerSetStatuses(
 	ctx context.Context,
-	gw *gatewayv1.Gateway,
 	graphRoot *graph.GatewayRootNode,
-	httpRoutes *gatewayv1.HTTPRouteList,
-	tlsRoutes *gatewayv1.TLSRouteList,
-	grpcRoutes *gatewayv1.GRPCRouteList,
-	tcpRoutes *gatewayv1.TCPRouteList,
-	udpRoutes *gatewayv1.UDPRouteList,
-	namespaceLabels helpers.NamespaceLabelIndex,
 ) {
-	attachedRoutes := make(map[*graph.ListenerNode]int32)
 	originalListenerSets := make(map[*graph.ListenerSetNode]*gatewayv1.ListenerSet)
 	for _, listenerSetNode := range graphRoot.GatewayClass.Gateway.ListenerSets {
 		listenerSet := listenerSetNode.ListenerSet
 		originalListenerSets[listenerSetNode] = listenerSet.DeepCopy()
-		for _, listenerNode := range listenerSetNode.Listeners {
-			attachedRoutes[listenerNode] += int32(len(r.filterHTTPRoutesByListener(
-				ctx, gw, listenerNode, httpRoutes.Items, namespaceLabels, *listenerSet)))
-			attachedRoutes[listenerNode] += int32(len(r.filterGRPCRoutesByListener(
-				ctx, gw, listenerNode, grpcRoutes.Items, namespaceLabels, *listenerSet)))
-			attachedRoutes[listenerNode] += int32(len(r.filterTLSRoutesByListener(
-				ctx, gw, listenerNode, tlsRoutes.Items, namespaceLabels, *listenerSet)))
-			attachedRoutes[listenerNode] += int32(len(r.filterTCPRoutesByListener(
-				ctx, gw, listenerNode, tcpRoutes.Items, namespaceLabels, *listenerSet)))
-			attachedRoutes[listenerNode] += int32(len(r.filterUDPRoutesByListener(
-				ctx, gw, listenerNode, udpRoutes.Items, namespaceLabels, *listenerSet)))
-		}
 	}
 
-	graphRoot.SetListenerSetStatuses(attachedRoutes)
+	graphRoot.SetListenerSetStatuses()
 	for listenerSetNode, originalListenerSet := range originalListenerSets {
 		listenerSet := listenerSetNode.ListenerSet
 		if err := r.updateListenerSetStatus(ctx, originalListenerSet, listenerSet); err != nil {

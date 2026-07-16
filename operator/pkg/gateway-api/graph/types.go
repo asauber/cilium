@@ -54,6 +54,7 @@ type ListenerNode struct {
 	SupportedKinds []gatewayv1.RouteGroupKind
 
 	AllowedRouteNamespaces map[string]struct{}
+	AttachedRoutes         int32
 
 	HTTPRoutes []*HTTPRouteNode
 	GRPCRoutes []*GRPCRouteNode

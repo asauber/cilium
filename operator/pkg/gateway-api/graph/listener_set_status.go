@@ -12,7 +12,7 @@ import (
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
 )
 
-func (root *GatewayRootNode) SetListenerSetStatuses(attachedRoutes map[*ListenerNode]int32) {
+func (root *GatewayRootNode) SetListenerSetStatuses() {
 	gw := root.GatewayClass.Gateway
 	gw.Gateway.Status.AttachedListenerSets = nil
 
@@ -46,7 +46,7 @@ func (root *GatewayRootNode) SetListenerSetStatuses(attachedRoutes map[*Listener
 				Name:           listenerNode.Listener.Name,
 				SupportedKinds: listenerNode.SupportedKinds,
 				Conditions:     listenerNode.Conditions,
-				AttachedRoutes: attachedRoutes[listenerNode],
+				AttachedRoutes: listenerNode.AttachedRoutes,
 			})
 		}
 		listenerSet.Status.Listeners = listenerStatuses
