@@ -14,37 +14,37 @@ func (node *ListenerNode) AddRoutes(
 ) {
 	for index := range httpRoutes.Items {
 		route := &httpRoutes.Items[index]
-		if node.parentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
+		if node.ParentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
 			node.HTTPRoutes = append(node.HTTPRoutes, &HTTPRouteNode{Route: route})
 		}
 	}
 	for index := range grpcRoutes.Items {
 		route := &grpcRoutes.Items[index]
-		if node.parentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
+		if node.ParentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
 			node.GRPCRoutes = append(node.GRPCRoutes, &GRPCRouteNode{Route: route})
 		}
 	}
 	for index := range tlsRoutes.Items {
 		route := &tlsRoutes.Items[index]
-		if node.parentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
+		if node.ParentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
 			node.TLSRoutes = append(node.TLSRoutes, &TLSRouteNode{Route: route})
 		}
 	}
 	for index := range tcpRoutes.Items {
 		route := &tcpRoutes.Items[index]
-		if node.parentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
+		if node.ParentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
 			node.TCPRoutes = append(node.TCPRoutes, &TCPRouteNode{Route: route})
 		}
 	}
 	for index := range udpRoutes.Items {
 		route := &udpRoutes.Items[index]
-		if node.parentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
+		if node.ParentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
 			node.UDPRoutes = append(node.UDPRoutes, &UDPRouteNode{Route: route})
 		}
 	}
 }
 
-func (node *ListenerNode) parentRefsTarget(
+func (node *ListenerNode) ParentRefsTarget(
 	parentRefs []gatewayv1.ParentReference,
 	routeNamespace string,
 ) bool {
@@ -67,6 +67,9 @@ func (node *ListenerNode) parentRefsTarget(
 			continue
 		}
 		if ref.SectionName != nil && *ref.SectionName != node.Listener.Name {
+			continue
+		}
+		if ref.Port != nil && *ref.Port != node.Listener.Port {
 			continue
 		}
 		return true
@@ -94,4 +97,8 @@ func (node *ListenerNode) parentNamespace() string {
 		return node.Gateway.GetNamespace()
 	}
 	return node.ListenerSet.GetNamespace()
+}
+
+func (node *ListenerNode) OwnerNamespace() string {
+	return node.parentNamespace()
 }

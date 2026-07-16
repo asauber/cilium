@@ -1299,7 +1299,8 @@ func Test_sectionNameMatched(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equalf(t, tt.want, parentRefMatched(gw, tt.args.listener, nil, "default", tt.args.refs), "parentRefMatched(%v, %v, %v, %v)", gw, tt.args.listener, tt.args.routeNamespace, tt.args.refs)
+			listenerNode := &graph.ListenerNode{Listener: *tt.args.listener, Gateway: gw}
+			assert.Equalf(t, tt.want, listenerNode.ParentRefsTarget(tt.args.refs, "default"), "ParentRefsTarget(%v, %v, %v)", tt.args.listener, tt.args.routeNamespace, tt.args.refs)
 		})
 	}
 }

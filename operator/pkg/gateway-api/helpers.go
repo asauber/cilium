@@ -179,28 +179,6 @@ func setMergedLabelsAndAnnotations(temp, desired client.Object) {
 	temp.SetLabels(mergeMap(temp.GetLabels(), desired.GetLabels()))
 }
 
-func gatewayFQR(gw *gatewayv1.Gateway) model.FullyQualifiedResource {
-	return model.FullyQualifiedResource{
-		Name:      gw.GetName(),
-		Namespace: gw.GetNamespace(),
-		Group:     gatewayv1.SchemeGroupVersion.Group,
-		Version:   gatewayv1.SchemeGroupVersion.Version,
-		Kind:      "Gateway",
-		UID:       string(gw.GetUID()),
-	}
-}
-
-func listenerSetFQR(ls *gatewayv1.ListenerSet) model.FullyQualifiedResource {
-	return model.FullyQualifiedResource{
-		Name:      ls.GetName(),
-		Namespace: ls.GetNamespace(),
-		Group:     gatewayv1.SchemeGroupVersion.Group,
-		Version:   gatewayv1.SchemeGroupVersion.Version,
-		Kind:      "ListenerSet",
-		UID:       string(ls.GetUID()),
-	}
-}
-
 func deduplicateHTTPRoutes(routes []gatewayv1.HTTPRoute) []gatewayv1.HTTPRoute {
 	seen := make(map[types.NamespacedName]struct{}, len(routes))
 	result := make([]gatewayv1.HTTPRoute, 0, len(routes))
