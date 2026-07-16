@@ -80,7 +80,7 @@ func TestGatewayRootNodeRetainsSourceResources(t *testing.T) {
 	assert.Same(t, secret, root.GatewayClass.Gateway.TLSSecrets[secretKey].Secret)
 }
 
-func TestGatewayRootNodeBuildMergedListeners(t *testing.T) {
+func TestGatewayRootNodeBuildValidatedListeners(t *testing.T) {
 	root := BuildRoot(&gatewayv1.Gateway{Spec: gatewayv1.GatewaySpec{
 		Listeners: []gatewayv1.Listener{
 			{Name: "gateway-valid"},
@@ -99,7 +99,7 @@ func TestGatewayRootNodeBuildMergedListeners(t *testing.T) {
 	listenerSet.Allowed = true
 	listenerSet.Listeners[1].Valid = false
 
-	listeners := root.BuildMergedListeners()
+	listeners := root.BuildValidatedListeners()
 
 	require.Len(t, listeners, 2)
 	assert.Equal(t, gatewayv1.SectionName("gateway-valid"), listeners[0].Name)

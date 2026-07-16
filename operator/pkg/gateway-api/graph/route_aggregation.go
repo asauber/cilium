@@ -11,83 +11,57 @@ import (
 )
 
 func (root *GatewayRootNode) AggregateAttachedRoutes() {
-	gateway := root.GatewayClass.Gateway
-	for _, listener := range gateway.Listeners {
-		listener.AggregateAttachedRoutes()
-	}
-	for _, listenerSet := range gateway.ListenerSets {
-		for _, listener := range listenerSet.Listeners {
-			listener.AggregateAttachedRoutes()
-		}
+	listeners := root.validListeners()
+	hostnamesByProtocol := listenerHostnamesByProtocol(listeners)
+	for _, listener := range listeners {
+		listener.AggregateAttachedRoutes(hostnamesByProtocol)
 	}
 }
 
-func (node *ListenerNode) AggregateAttachedRoutes() {
-	var attachedRoutes int32
-	for _, route := range node.HTTPRoutes {
-		if node.httpRouteAccepted(route) {
-			attachedRoutes++
-		}
-	}
-	for _, route := range node.GRPCRoutes {
-		if node.grpcRouteAccepted(route) {
-			attachedRoutes++
-		}
-	}
-	for _, route := range node.TLSRoutes {
-		if node.tlsRouteAccepted(route) {
-			attachedRoutes++
-		}
-	}
-	for _, route := range node.TCPRoutes {
-		if node.supportsRouteKind("TCPRoute") &&
-			node.routeAccepted(route.Route.GetNamespace(), route.Route.Status.Parents) {
-			attachedRoutes++
-		}
-	}
-	for _, route := range node.UDPRoutes {
-		if node.supportsRouteKind("UDPRoute") &&
-			node.routeAccepted(route.Route.GetNamespace(), route.Route.Status.Parents) {
-			attachedRoutes++
-		}
-	}
-	node.AttachedRoutes = attachedRoutes
+func (node *ListenerNode) AggregateAttachedRoutes(hostnamesByProtocol map[gatewayv1.ProtocolType][]string) {
+	node.AttachedRoutes = int32(
+		len(acceptedHTTPRoutes(node, hostnamesByProtocol)) +
+			len(acceptedGRPCRoutes(node, hostnamesByProtocol)) +
+			len(acceptedTLSRoutes(node, hostnamesByProtocol)) +
+			len(acceptedTCPRoutes(node)) +
+			len(acceptedUDPRoutes(node)),
+	)
 }
 
-func (node *ListenerNode) httpRouteAccepted(route *HTTPRouteNode) bool {
+func (node *ListenerNode) httpRouteAccepted(route *HTTPRouteNode, listenerHostnames []string) ([]string, bool) {
 	if !node.supportsRouteKind("HTTPRoute") {
-		return false
+		return nil, false
 	}
 	if !node.routeAccepted(route.Route.GetNamespace(), route.Route.Status.Parents) {
-		return false
+		return nil, false
 	}
-	route.ComputedHosts = model.ComputeHosts(hostnamesToStrings(route.Route.Spec.Hostnames),
-		(*string)(node.Listener.Hostname), nil)
-	return len(route.ComputedHosts) > 0
+	hostnames := model.ComputeHosts(hostnamesToStrings(route.Route.Spec.Hostnames),
+		(*string)(node.Listener.Hostname), listenerHostnames)
+	return hostnames, len(hostnames) > 0
 }
 
-func (node *ListenerNode) grpcRouteAccepted(route *GRPCRouteNode) bool {
+func (node *ListenerNode) grpcRouteAccepted(route *GRPCRouteNode, listenerHostnames []string) ([]string, bool) {
 	if !node.supportsRouteKind("GRPCRoute") {
-		return false
+		return nil, false
 	}
 	if !node.routeAccepted(route.Route.GetNamespace(), route.Route.Status.Parents) {
-		return false
+		return nil, false
 	}
-	route.ComputedHosts = model.ComputeHosts(hostnamesToStrings(route.Route.Spec.Hostnames),
-		(*string)(node.Listener.Hostname), nil)
-	return len(route.ComputedHosts) > 0
+	hostnames := model.ComputeHosts(hostnamesToStrings(route.Route.Spec.Hostnames),
+		(*string)(node.Listener.Hostname), listenerHostnames)
+	return hostnames, len(hostnames) > 0
 }
 
-func (node *ListenerNode) tlsRouteAccepted(route *TLSRouteNode) bool {
+func (node *ListenerNode) tlsRouteAccepted(route *TLSRouteNode, listenerHostnames []string) ([]string, bool) {
 	if !node.supportsRouteKind("TLSRoute") {
-		return false
+		return nil, false
 	}
 	if !node.routeAccepted(route.Route.GetNamespace(), route.Route.Status.Parents) {
-		return false
+		return nil, false
 	}
-	route.ComputedHosts = model.ComputeHosts(hostnamesToStrings(route.Route.Spec.Hostnames),
-		(*string)(node.Listener.Hostname), nil)
-	return len(route.ComputedHosts) > 0
+	hostnames := model.ComputeHosts(hostnamesToStrings(route.Route.Spec.Hostnames),
+		(*string)(node.Listener.Hostname), listenerHostnames)
+	return hostnames, len(hostnames) > 0
 }
 
 func (node *ListenerNode) routeAccepted(routeNamespace string, parents []gatewayv1.RouteParentStatus) bool {

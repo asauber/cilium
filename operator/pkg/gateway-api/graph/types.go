@@ -64,18 +64,15 @@ type ListenerNode struct {
 }
 
 type HTTPRouteNode struct {
-	Route         *gatewayv1.HTTPRoute
-	ComputedHosts []string
+	Route *gatewayv1.HTTPRoute
 }
 
 type GRPCRouteNode struct {
-	Route         *gatewayv1.GRPCRoute
-	ComputedHosts []string
+	Route *gatewayv1.GRPCRoute
 }
 
 type TLSRouteNode struct {
-	Route         *gatewayv1.TLSRoute
-	ComputedHosts []string
+	Route *gatewayv1.TLSRoute
 }
 
 type TCPRouteNode struct {

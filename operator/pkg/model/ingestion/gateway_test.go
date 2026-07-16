@@ -16,7 +16,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
+	mcsapiv1beta1 "sigs.k8s.io/mcs-api/pkg/apis/v1beta1"
 
+	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
 	"github.com/cilium/cilium/operator/pkg/model"
 	"github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2alpha1"
 )
@@ -24,6 +26,189 @@ import (
 const (
 	basedGatewayTestdataDir = "testdata/gateway"
 )
+
+type gatewayTestInput struct {
+	GatewayClass               gatewayv1.GatewayClass
+	GatewayClassConfig         *v2alpha1.CiliumGatewayClassConfig
+	ServerHeaderTransformation model.ServerHeaderTransformation
+	Gateway                    gatewayv1.Gateway
+	HTTPRoutes                 []gatewayv1.HTTPRoute
+	TLSRoutes                  []gatewayv1.TLSRoute
+	GRPCRoutes                 []gatewayv1.GRPCRoute
+	TCPRoutes                  []gatewayv1.TCPRoute
+	UDPRoutes                  []gatewayv1.UDPRoute
+	ReferenceGrants            []gatewayv1.ReferenceGrant
+	Namespaces                 []corev1.Namespace
+	Services                   []corev1.Service
+	ServiceImports             []mcsapiv1beta1.ServiceImport
+	BackendTLSPolicyMap        helpers.BackendTLSPolicyServiceMap
+}
+
+func (input gatewayTestInput) toInput() Input {
+	return Input{
+		GatewayClass:               input.GatewayClass,
+		GatewayClassConfig:         input.GatewayClassConfig,
+		ServerHeaderTransformation: input.ServerHeaderTransformation,
+		Gateway:                    input.Gateway,
+		ValidatedListeners:         testValidatedListeners(input),
+		ReferenceGrants:            input.ReferenceGrants,
+		Services:                   input.Services,
+		ServiceImports:             input.ServiceImports,
+		BackendTLSPolicyMap:        input.BackendTLSPolicyMap,
+	}
+}
+
+func testValidatedListeners(input gatewayTestInput) []ValidatedListener {
+	hostnamesByProtocol := testListenerHostnamesByProtocol(input.Gateway.Spec.Listeners)
+	var listeners []ValidatedListener
+	for _, listener := range input.Gateway.Spec.Listeners {
+		allowedNamespaces := helpers.AllowedRouteNamespaces(listener, input.Gateway.Namespace, input.Namespaces)
+		listeners = append(listeners, ValidatedListener{
+			Listener: listener,
+			Source: model.FullyQualifiedResource{
+				Name:      input.Gateway.Name,
+				Namespace: input.Gateway.Namespace,
+				Group:     gatewayv1.SchemeGroupVersion.Group,
+				Version:   gatewayv1.SchemeGroupVersion.Version,
+				Kind:      "Gateway",
+				UID:       string(input.Gateway.UID),
+			},
+			HTTPRoutes: testHTTPRoutes(input.HTTPRoutes, input.Gateway, listener, allowedNamespaces,
+				hostnamesByProtocol[listener.Protocol]),
+			GRPCRoutes: testGRPCRoutes(input.GRPCRoutes, input.Gateway, listener, allowedNamespaces,
+				hostnamesByProtocol[listener.Protocol]),
+			TLSRoutes: testTLSRoutes(input.TLSRoutes, input.Gateway, listener, allowedNamespaces,
+				hostnamesByProtocol[listener.Protocol]),
+			TCPRoutes: testRoutesForListener(input.TCPRoutes, func(route gatewayv1.TCPRoute) []gatewayv1.ParentReference {
+				return route.Spec.ParentRefs
+			}, func(route gatewayv1.TCPRoute) string { return route.Namespace }, input.Gateway, listener, allowedNamespaces),
+			UDPRoutes: testRoutesForListener(input.UDPRoutes, func(route gatewayv1.UDPRoute) []gatewayv1.ParentReference {
+				return route.Spec.ParentRefs
+			}, func(route gatewayv1.UDPRoute) string { return route.Namespace }, input.Gateway, listener, allowedNamespaces),
+		})
+	}
+	return listeners
+}
+
+func testListenerHostnamesByProtocol(listeners []gatewayv1.Listener) map[gatewayv1.ProtocolType][]string {
+	hostnames := make(map[gatewayv1.ProtocolType][]string)
+	for _, listener := range listeners {
+		if listener.Hostname != nil {
+			hostnames[listener.Protocol] = append(hostnames[listener.Protocol], string(*listener.Hostname))
+		}
+	}
+	return hostnames
+}
+
+func testHTTPRoutes(
+	routes []gatewayv1.HTTPRoute,
+	gateway gatewayv1.Gateway,
+	listener gatewayv1.Listener,
+	allowedNamespaces map[string]struct{},
+	listenerHostnames []string,
+) []ValidatedHTTPRoute {
+	var validated []ValidatedHTTPRoute
+	for _, route := range testRoutesForListener(routes, func(route gatewayv1.HTTPRoute) []gatewayv1.ParentReference {
+		return route.Spec.ParentRefs
+	}, func(route gatewayv1.HTTPRoute) string { return route.Namespace }, gateway, listener, allowedNamespaces) {
+		hostnames := model.ComputeHosts(toStringSlice(route.Spec.Hostnames), (*string)(listener.Hostname), listenerHostnames)
+		if len(hostnames) > 0 {
+			validated = append(validated, ValidatedHTTPRoute{Route: route, Hostnames: hostnames})
+		}
+	}
+	return validated
+}
+
+func testGRPCRoutes(
+	routes []gatewayv1.GRPCRoute,
+	gateway gatewayv1.Gateway,
+	listener gatewayv1.Listener,
+	allowedNamespaces map[string]struct{},
+	listenerHostnames []string,
+) []ValidatedGRPCRoute {
+	var validated []ValidatedGRPCRoute
+	for _, route := range testRoutesForListener(routes, func(route gatewayv1.GRPCRoute) []gatewayv1.ParentReference {
+		return route.Spec.ParentRefs
+	}, func(route gatewayv1.GRPCRoute) string { return route.Namespace }, gateway, listener, allowedNamespaces) {
+		hostnames := model.ComputeHosts(toStringSlice(route.Spec.Hostnames), (*string)(listener.Hostname), listenerHostnames)
+		if len(hostnames) > 0 {
+			validated = append(validated, ValidatedGRPCRoute{Route: route, Hostnames: hostnames})
+		}
+	}
+	return validated
+}
+
+func testTLSRoutes(
+	routes []gatewayv1.TLSRoute,
+	gateway gatewayv1.Gateway,
+	listener gatewayv1.Listener,
+	allowedNamespaces map[string]struct{},
+	listenerHostnames []string,
+) []ValidatedTLSRoute {
+	var validated []ValidatedTLSRoute
+	for _, route := range testRoutesForListener(routes, func(route gatewayv1.TLSRoute) []gatewayv1.ParentReference {
+		return route.Spec.ParentRefs
+	}, func(route gatewayv1.TLSRoute) string { return route.Namespace }, gateway, listener, allowedNamespaces) {
+		hostnames := model.ComputeHosts(toStringSlice(route.Spec.Hostnames), (*string)(listener.Hostname), listenerHostnames)
+		if len(hostnames) > 0 {
+			validated = append(validated, ValidatedTLSRoute{Route: route, Hostnames: hostnames})
+		}
+	}
+	return validated
+}
+
+func testRoutesForListener[T any](
+	routes []T,
+	parentRefs func(T) []gatewayv1.ParentReference,
+	namespace func(T) string,
+	gateway gatewayv1.Gateway,
+	listener gatewayv1.Listener,
+	allowedNamespaces map[string]struct{},
+) []T {
+	var validated []T
+	for _, route := range routes {
+		if testRouteTargetsListener(parentRefs(route), namespace(route), gateway, listener, allowedNamespaces) {
+			validated = append(validated, route)
+		}
+	}
+	return validated
+}
+
+func testRouteTargetsListener(
+	parentRefs []gatewayv1.ParentReference,
+	routeNamespace string,
+	gateway gatewayv1.Gateway,
+	listener gatewayv1.Listener,
+	allowedNamespaces map[string]struct{},
+) bool {
+	if allowedNamespaces != nil {
+		if _, allowed := allowedNamespaces[routeNamespace]; !allowed {
+			return false
+		}
+	}
+	for _, parentRef := range parentRefs {
+		if parentRef.Kind != nil && *parentRef.Kind != "Gateway" {
+			continue
+		}
+		if parentRef.Name != gatewayv1.ObjectName(gateway.Name) {
+			continue
+		}
+		if parentRef.Namespace != nil && string(*parentRef.Namespace) != gateway.Namespace {
+			continue
+		}
+		if parentRef.Namespace == nil && routeNamespace != gateway.Namespace {
+			continue
+		}
+		if parentRef.SectionName != nil && *parentRef.SectionName != listener.Name {
+			continue
+		}
+		if parentRef.Port != nil && *parentRef.Port != listener.Port {
+			continue
+		}
+		return true
+	}
+	return false
+}
 
 func TestHTTPGatewayAPI(t *testing.T) {
 	tests := map[string]struct{}{
@@ -67,7 +252,7 @@ func TestHTTPGatewayAPI(t *testing.T) {
 			logger := hivetest.Logger(t, hivetest.LogLevel(slog.LevelDebug))
 
 			input := readGatewayInput(t, name)
-			m := GatewayAPI(logger, input)
+			m := GatewayAPI(logger, input.toInput())
 
 			expected := []model.HTTPListener{}
 			readOutput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(name), "output-listeners.yaml"), &expected)
@@ -81,7 +266,7 @@ func TestHTTPGatewayAPIFiltersSelectorNamespacesPerListener(t *testing.T) {
 	selector := gatewayv1.NamespacesFromSelector
 	logger := hivetest.Logger(t, hivetest.LogLevel(slog.LevelDebug))
 
-	m := GatewayAPI(logger, Input{
+	m := GatewayAPI(logger, gatewayTestInput{
 		Gateway: gatewayv1.Gateway{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "selector-listener-conflict-gateway",
@@ -173,7 +358,7 @@ func TestHTTPGatewayAPIFiltersSelectorNamespacesPerListener(t *testing.T) {
 				},
 			},
 		},
-	})
+	}.toInput())
 
 	require.Len(t, m.HTTP, 2)
 	require.Equal(t, "http-selected", m.HTTP[0].Name)
@@ -193,7 +378,7 @@ func TestHTTPAndGRPCGatewayAPIFiltersRoutesByListenerAllowedNamespaces(t *testin
 	grpcMethod := "Get"
 	logger := hivetest.Logger(t, hivetest.LogLevel(slog.LevelDebug))
 
-	m := GatewayAPI(logger, Input{
+	m := GatewayAPI(logger, gatewayTestInput{
 		Gateway: gatewayv1.Gateway{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "platform",
@@ -352,7 +537,7 @@ func TestHTTPAndGRPCGatewayAPIFiltersRoutesByListenerAllowedNamespaces(t *testin
 				},
 			},
 		},
-	})
+	}.toInput())
 
 	require.Len(t, m.HTTP, 2)
 	require.Equal(t, "http", m.HTTP[0].Name)
@@ -376,7 +561,7 @@ func TestTLSGatewayAPIFiltersRoutesByListenerAllowedNamespaces(t *testing.T) {
 	allNamespaces := gatewayv1.NamespacesFromAll
 	logger := hivetest.Logger(t, hivetest.LogLevel(slog.LevelDebug))
 
-	m := GatewayAPI(logger, Input{
+	m := GatewayAPI(logger, gatewayTestInput{
 		Gateway: gatewayv1.Gateway{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "platform",
@@ -455,7 +640,7 @@ func TestTLSGatewayAPIFiltersRoutesByListenerAllowedNamespaces(t *testing.T) {
 				},
 			},
 		},
-	})
+	}.toInput())
 
 	require.Len(t, m.TLSPassthrough, 2)
 	require.Equal(t, "tls-same", m.TLSPassthrough[0].Name)
@@ -482,7 +667,7 @@ func TestTLSGatewayAPI(t *testing.T) {
 			logger := hivetest.Logger(t, hivetest.LogLevel(slog.LevelDebug))
 
 			input := readGatewayInput(t, name)
-			m := GatewayAPI(logger, input)
+			m := GatewayAPI(logger, input.toInput())
 
 			expected := []model.TLSPassthroughListener{}
 			readOutput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(name), "output-listeners.yaml"), &expected)
@@ -502,7 +687,7 @@ func TestGRPCGatewayAPI(t *testing.T) {
 
 			input := readGatewayInput(t, name)
 
-			m := GatewayAPI(logger, input)
+			m := GatewayAPI(logger, input.toInput())
 
 			expected := []model.HTTPListener{}
 			readOutput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(name), "output-listeners.yaml"), &expected)
@@ -521,7 +706,7 @@ func TestL4GatewayAPI(t *testing.T) {
 			logger := hivetest.Logger(t, hivetest.LogLevel(slog.LevelDebug))
 
 			input := readGatewayInput(t, name)
-			m := GatewayAPI(logger, input)
+			m := GatewayAPI(logger, input.toInput())
 
 			expected := []model.L4Listener{}
 			readOutput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(name), "output-listeners.yaml"), &expected)
@@ -536,7 +721,7 @@ func TestL4GatewayAPIFiltersRoutesByListenerAllowedNamespaces(t *testing.T) {
 	allNamespaces := gatewayv1.NamespacesFromAll
 	logger := hivetest.Logger(t, hivetest.LogLevel(slog.LevelDebug))
 
-	m := GatewayAPI(logger, Input{
+	m := GatewayAPI(logger, gatewayTestInput{
 		Gateway: gatewayv1.Gateway{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "platform",
@@ -727,7 +912,7 @@ func TestL4GatewayAPIFiltersRoutesByListenerAllowedNamespaces(t *testing.T) {
 				},
 			},
 		},
-	})
+	}.toInput())
 
 	require.Len(t, m.L4, 4)
 	require.Equal(t, "tcp-same", m.L4[0].Name)
@@ -1392,9 +1577,9 @@ func testReferenceGrant(namespace, fromNamespace, kind string) gatewayv1.Referen
 	}
 }
 
-func readGatewayInput(t *testing.T, testName string) Input {
+func readGatewayInput(t *testing.T, testName string) gatewayTestInput {
 	t.Helper()
-	input := Input{}
+	input := gatewayTestInput{}
 
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-gatewayclass.yaml"), &input.GatewayClass)
 	readInput(t, fmt.Sprintf("%s/%s/%s", basedGatewayTestdataDir, rewriteTestName(testName), "input-gatewayclassconfig.yaml"), &input.GatewayClassConfig)

@@ -127,13 +127,11 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	namespaceList := &corev1.NamespaceList{}
-	var namespaces []corev1.Namespace
 	if graphRoot.HasNamespaceLabelSelector() {
 		if err := r.Client.List(ctx, namespaceList); err != nil {
 			scopedLog.ErrorContext(ctx, "Unable to list Namespaces", logfields.Error, err)
 			return r.handleReconcileErrorWithStatus(ctx, err, original, gw)
 		}
-		namespaces = namespaceList.Items
 	}
 
 	httpRouteList := &gatewayv1.HTTPRouteList{}
@@ -348,14 +346,8 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 	graphRoot.AggregateAttachedRoutes()
 
-	// The Gateway-level Route filters scope to the admitted ListenerSets read
-	// from the validated graph.
 	admittedSets := allowedListenerSets(graphRoot)
 	httpRoutes := r.filterHTTPRoutesByGateway(ctx, gw, admittedSets, httpRouteList.Items)
-	tlsRoutes := r.filterTLSRoutesByGateway(ctx, gw, admittedSets, tlsRouteList.Items)
-	grpcRoutes := r.filterGRPCRoutesByGateway(ctx, gw, admittedSets, grpcRouteList.Items)
-	tcpRoutes := r.filterTCPRoutesByGateway(ctx, gw, admittedSets, tcpRouteList.Items)
-	udpRoutes := r.filterUDPRoutesByGateway(ctx, gw, admittedSets, udpRouteList.Items)
 
 	if err := r.setBackendTLSPolicyStatuses(scopedLog, ctx, httpRoutes, btlspMap, req.NamespacedName); err != nil {
 		scopedLog.ErrorContext(ctx, "Unable to update BackendTLSPolicy Status", logfields.Error, err)
@@ -371,17 +363,11 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		GatewayClassConfig:         gatewayClassConfig,
 		ServerHeaderTransformation: serverHeaderTransformation,
 		Gateway:                    *gw,
-		HTTPRoutes:                 httpRoutes,
-		TLSRoutes:                  tlsRoutes,
-		GRPCRoutes:                 grpcRoutes,
-		TCPRoutes:                  tcpRoutes,
-		UDPRoutes:                  udpRoutes,
-		Namespaces:                 namespaces,
+		ValidatedListeners:         graphRoot.BuildValidatedListeners(),
 		Services:                   servicesList.Items,
 		ServiceImports:             serviceImportsList.Items,
 		ReferenceGrants:            grants.Items,
 		BackendTLSPolicyMap:        btlspMap,
-		MergedListeners:            graphRoot.BuildMergedListeners(),
 	})
 
 	listenersStatus := r.setListenerStatus(gw, graphRoot)
@@ -796,16 +782,6 @@ func (r *gatewayReconciler) filterHTTPRoutesByGateway(ctx context.Context, gw *g
 	return filtered
 }
 
-func (r *gatewayReconciler) filterGRPCRoutesByGateway(ctx context.Context, gw *gatewayv1.Gateway, attachedListenerSets []gatewayv1.ListenerSet, routes []gatewayv1.GRPCRoute) []gatewayv1.GRPCRoute {
-	var filtered []gatewayv1.GRPCRoute
-	for _, route := range routes {
-		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, attachedListenerSets) {
-			filtered = append(filtered, route)
-		}
-	}
-	return filtered
-}
-
 // getGatewayClassConfig returns the CiliumGatewayClassConfig referenced by the GatewayClass.
 // If the GatewayClass does not reference a CiliumGatewayClassConfig, it returns nil.
 func (r *gatewayReconciler) getGatewayClassConfig(ctx context.Context, gwc *gatewayv1.GatewayClass) *v2alpha1.CiliumGatewayClassConfig {
@@ -823,36 +799,6 @@ func (r *gatewayReconciler) getGatewayClassConfig(ctx context.Context, gwc *gate
 		return nil
 	}
 	return res
-}
-
-func (r *gatewayReconciler) filterTLSRoutesByGateway(ctx context.Context, gw *gatewayv1.Gateway, attachedListenerSets []gatewayv1.ListenerSet, routes []gatewayv1.TLSRoute) []gatewayv1.TLSRoute {
-	var filtered []gatewayv1.TLSRoute
-	for _, route := range routes {
-		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, attachedListenerSets) {
-			filtered = append(filtered, route)
-		}
-	}
-	return filtered
-}
-
-func (r *gatewayReconciler) filterTCPRoutesByGateway(ctx context.Context, gw *gatewayv1.Gateway, attachedListenerSets []gatewayv1.ListenerSet, routes []gatewayv1.TCPRoute) []gatewayv1.TCPRoute {
-	var filtered []gatewayv1.TCPRoute
-	for _, route := range routes {
-		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, attachedListenerSets) {
-			filtered = append(filtered, route)
-		}
-	}
-	return filtered
-}
-
-func (r *gatewayReconciler) filterUDPRoutesByGateway(ctx context.Context, gw *gatewayv1.Gateway, attachedListenerSets []gatewayv1.ListenerSet, routes []gatewayv1.UDPRoute) []gatewayv1.UDPRoute {
-	var filtered []gatewayv1.UDPRoute
-	for _, route := range routes {
-		if helpers.IsParentAttachable(ctx, gw, &route, route.Status.Parents, attachedListenerSets) {
-			filtered = append(filtered, route)
-		}
-	}
-	return filtered
 }
 
 func (r *gatewayReconciler) setAddressStatus(ctx context.Context, gw *gatewayv1.Gateway) error {
