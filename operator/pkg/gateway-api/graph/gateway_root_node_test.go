@@ -25,6 +25,32 @@ func TestGatewayRootNodeAddListenerSets(t *testing.T) {
 	assert.Equal(t, listenerSet, root.GatewayClass.Gateway.ListenerSets[0].ListenerSet)
 }
 
+func TestGatewayRootNodeBuildMergedListeners(t *testing.T) {
+	root := BuildRoot(gatewayv1.Gateway{Spec: gatewayv1.GatewaySpec{
+		Listeners: []gatewayv1.Listener{
+			{Name: "gateway-valid"},
+			{Name: "gateway-invalid"},
+		},
+	}}, gatewayv1.GatewayClass{}, nil)
+	root.AddListenerSets([]gatewayv1.ListenerSet{{Spec: gatewayv1.ListenerSetSpec{
+		Listeners: []gatewayv1.ListenerEntry{
+			{Name: "listenerset-valid"},
+			{Name: "listenerset-invalid"},
+		},
+	}}})
+
+	root.GatewayClass.Gateway.Listeners[1].Valid = false
+	listenerSet := root.GatewayClass.Gateway.ListenerSets[0]
+	listenerSet.Allowed = true
+	listenerSet.Listeners[1].Valid = false
+
+	listeners := root.BuildMergedListeners()
+
+	require.Len(t, listeners, 2)
+	assert.Equal(t, gatewayv1.SectionName("gateway-valid"), listeners[0].Name)
+	assert.Equal(t, gatewayv1.SectionName("listenerset-valid"), listeners[1].Name)
+}
+
 func TestGatewayRootNodeHasNamespaceLabelSelector(t *testing.T) {
 	selector := &metav1.LabelSelector{MatchLabels: map[string]string{"team": "networking"}}
 	tests := []struct {

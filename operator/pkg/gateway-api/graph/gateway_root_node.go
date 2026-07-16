@@ -5,6 +5,7 @@ package graph
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
@@ -100,6 +101,18 @@ func (root *GatewayRootNode) AddServices(services []corev1.Service) {
 
 func (root *GatewayRootNode) AddBackendTLSPolicyMap(policyMap helpers.BackendTLSPolicyServiceMap) {
 	root.GatewayClass.Gateway.BackendTLSPolicyMap = policyMap
+}
+
+func (root *GatewayRootNode) AddTLSSecrets(validations map[types.NamespacedName]helpers.TLSSecretValidation) {
+	tlsSecrets := make(map[types.NamespacedName]*TLSSecret, len(validations))
+	for reference, validation := range validations {
+		tlsSecrets[reference] = &TLSSecret{
+			Secret: validation.Secret,
+			Valid:  validation.Valid,
+			Error:  validation.Error,
+		}
+	}
+	root.GatewayClass.Gateway.TLSSecrets = tlsSecrets
 }
 
 func (root *GatewayRootNode) HasNamespaceLabelSelector() bool {

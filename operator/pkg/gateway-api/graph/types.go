@@ -6,6 +6,7 @@ package graph
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
@@ -32,6 +33,13 @@ type GatewayNode struct {
 	Services            []corev1.Service
 	Namespaces          []corev1.Namespace
 	BackendTLSPolicyMap helpers.BackendTLSPolicyServiceMap
+	TLSSecrets          map[types.NamespacedName]*TLSSecret
+}
+
+type TLSSecret struct {
+	Secret *corev1.Secret
+	Valid  bool
+	Error  error
 }
 
 type ListenerSetNode struct {

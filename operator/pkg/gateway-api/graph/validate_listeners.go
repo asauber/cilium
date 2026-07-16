@@ -10,14 +10,11 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
 )
-
-// TLSSecretValidator checks whether a TLS secret is valid.
-// Returns nil if the secret is valid, an error otherwise.
-type TLSSecretValidator func(namespace, name string) error
 
 // ValidateAllowedListenerSets evaluates the Gateway's spec.allowedListeners
 // policy against every attached ListenerSet and records the result on each
@@ -28,7 +25,7 @@ type TLSSecretValidator func(namespace, name string) error
 //
 // It must run before ValidateListeners, which relies on the Allowed field to
 // decide whether to validate a ListenerSet's listeners.
-func ValidateAllowedListenerSets(root *GatewayRootNode) {
+func (root *GatewayRootNode) ValidateAllowedListenerSets() {
 	gw := root.GatewayClass.Gateway
 	for _, lsn := range gw.ListenerSets {
 		lsn.Allowed = helpers.GatewayAllowsListenerSet(gw.Gateway, lsn.ListenerSet, gw.Namespaces)
@@ -38,11 +35,7 @@ func ValidateAllowedListenerSets(root *GatewayRootNode) {
 // ValidateListeners runs conflict detection and per-listener validation on
 // all ListenerNodes in the graph. It sets Valid, Conditions, and
 // SupportedKinds on each ListenerNode.
-func ValidateListeners(
-	root *GatewayRootNode,
-	grants []gatewayv1.ReferenceGrant,
-	validateTLSSecret TLSSecretValidator,
-) {
+func (root *GatewayRootNode) ValidateListeners() {
 	gw := root.GatewayClass.Gateway
 
 	conflicts := conflictedListeners(gw.Listeners)
@@ -53,8 +46,8 @@ func ValidateListeners(
 			gw.Gateway.GetGeneration(),
 			gw.Gateway.GetNamespace(),
 			"Gateway",
-			grants,
-			validateTLSSecret,
+			gw.ReferenceGrants,
+			gw.TLSSecrets,
 			conflicts,
 			false,
 		)
@@ -83,8 +76,8 @@ func ValidateListeners(
 				lsn.ListenerSet.GetGeneration(),
 				lsn.ListenerSet.GetNamespace(),
 				"ListenerSet",
-				grants,
-				validateTLSSecret,
+				gw.ReferenceGrants,
+				gw.TLSSecrets,
 				lsConflicts,
 				true,
 			)
@@ -102,7 +95,7 @@ func validateListenerNode(
 	ownerNamespace string,
 	ownerKind string,
 	grants []gatewayv1.ReferenceGrant,
-	validateTLSSecret TLSSecretValidator,
+	tlsSecrets map[types.NamespacedName]*TLSSecret,
 	conflicts map[gatewayv1.SectionName]listenerConflict,
 	programmedWhenValid bool,
 ) {
@@ -134,7 +127,7 @@ func validateListenerNode(
 
 	validateTLS(
 		ln.Listener, generation, ownerNamespace, ownerKind, grants,
-		validateTLSSecret, &ln.Conditions, &invalidMessages, &isValid,
+		tlsSecrets, &ln.Conditions, &invalidMessages, &isValid,
 		&invalidReason, &supportedKinds,
 	)
 
@@ -240,7 +233,7 @@ func validateTLS(
 	ownerNamespace string,
 	ownerKind string,
 	grants []gatewayv1.ReferenceGrant,
-	validateSecret TLSSecretValidator,
+	tlsSecrets map[types.NamespacedName]*TLSSecret,
 	conds *[]metav1.Condition,
 	invalidMessages *[]string,
 	isValid *bool,
@@ -286,7 +279,13 @@ func validateTLS(
 		}
 
 		ns := helpers.NamespaceDerefOr(cert.Namespace, ownerNamespace)
-		if err := validateSecret(ns, string(cert.Name)); err != nil {
+		secretKey := types.NamespacedName{Namespace: ns, Name: string(cert.Name)}
+		tlsSecret, ok := tlsSecrets[secretKey]
+		if !ok || !tlsSecret.Valid {
+			validationError := fmt.Errorf("TLS Secret validation result is unavailable")
+			if ok && tlsSecret.Error != nil {
+				validationError = tlsSecret.Error
+			}
 			*conds = helpers.MergeConditions(*conds, metav1.Condition{
 				Type:               string(gatewayv1.ListenerConditionResolvedRefs),
 				Status:             metav1.ConditionFalse,
@@ -296,7 +295,7 @@ func validateTLS(
 				LastTransitionTime: metav1.NewTime(time.Now()),
 			})
 			*invalidMessages = append(*invalidMessages,
-				"Invalid CertificateRef, "+err.Error())
+				"Invalid CertificateRef, "+validationError.Error())
 			*isValid = false
 			break
 		}

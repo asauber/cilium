@@ -288,6 +288,9 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			" At a future date this annotation will be removed if no spec.addresses are set.", gw.GetNamespace(), gw.GetName(), annotation.LBIPAMIPKeyAlias))
 	}
 
+	tlsSecrets := helpers.ValidateTLSSecrets(
+		ctx, r.Client, helpers.TLSSecretReferences(gw, allAttachedListenerSets))
+
 	graphRoot.AddRoutes(
 		httpRouteList.Items,
 		grpcRouteList.Items,
@@ -299,13 +302,12 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	graphRoot.AddNamespaces(namespaces)
 	graphRoot.AddServices(servicesList.Items)
 	graphRoot.AddBackendTLSPolicyMap(btlspMap)
-
-	graph.ValidateAllowedListenerSets(graphRoot)
+	graphRoot.AddTLSSecrets(tlsSecrets)
 	graphRoot.PopulateAllowedRouteNamespaces()
-	graph.ValidateListeners(graphRoot, grants.Items, func(namespace, name string) error {
-		return validateTLSSecret(ctx, r.Client, namespace, name)
-	})
-	graph.DebugLog(scopedLog, graphRoot)
+
+	graphRoot.ValidateAllowedListenerSets()
+	graphRoot.ValidateListeners()
+	graphRoot.DebugLog(scopedLog)
 
 	// A Route whose parent names a ListenerSet rejected by the graph
 	// (allowedListeners) must not be accepted by it. The route checks skip such
@@ -381,7 +383,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		ServiceImports:             serviceImportsList.Items,
 		ReferenceGrants:            grants.Items,
 		BackendTLSPolicyMap:        btlspMap,
-		MergedListeners:            buildMergedListeners(graphRoot),
+		MergedListeners:            graphRoot.BuildMergedListeners(),
 	})
 
 	namespaceLabels := helpers.NewNamespaceLabelIndex(namespaces)
@@ -781,59 +783,6 @@ func checkableParentRefs(refs []gatewayv1.ParentReference, routeNamespace string
 	return checkable
 }
 
-// buildMergedListeners derives the ingestion listener set from the validated
-// graph: every Gateway listener plus the listeners of each admitted ListenerSet,
-// each carrying the namespaces resolved by graphRoot.PopulateAllowedRouteNamespaces.
-// Building this from the graph keeps Gateway-direct and ListenerSet listeners
-// uniform and removes the need for a separate hand-built merge.
-func buildMergedListeners(graphRoot *graph.GatewayRootNode) []ingestion.ListenerWithContext {
-	gw := graphRoot.GatewayClass.Gateway
-
-	var merged []ingestion.ListenerWithContext
-	for _, ln := range gw.Listeners {
-		merged = append(merged, ingestion.ListenerWithContext{
-			Listener:          ln.Listener,
-			Source:            listenerSource(ln),
-			AllowedNamespaces: ln.AllowedRouteNamespaces,
-		})
-	}
-	for _, lsn := range gw.ListenerSets {
-		if !lsn.Allowed {
-			continue
-		}
-		for _, ln := range lsn.Listeners {
-			merged = append(merged, ingestion.ListenerWithContext{
-				Listener:          ln.Listener,
-				Source:            listenerSource(ln),
-				AllowedNamespaces: ln.AllowedRouteNamespaces,
-			})
-		}
-	}
-	return merged
-}
-
-func listenerSource(listener *graph.ListenerNode) model.FullyQualifiedResource {
-	if listener.Gateway != nil {
-		return model.FullyQualifiedResource{
-			Name:      listener.Gateway.GetName(),
-			Namespace: listener.Gateway.GetNamespace(),
-			Group:     gatewayv1.SchemeGroupVersion.Group,
-			Version:   gatewayv1.SchemeGroupVersion.Version,
-			Kind:      "Gateway",
-			UID:       string(listener.Gateway.GetUID()),
-		}
-	}
-
-	return model.FullyQualifiedResource{
-		Name:      listener.ListenerSet.GetName(),
-		Namespace: listener.ListenerSet.GetNamespace(),
-		Group:     gatewayv1.SchemeGroupVersion.Group,
-		Version:   gatewayv1.SchemeGroupVersion.Version,
-		Kind:      "ListenerSet",
-		UID:       string(listener.ListenerSet.GetUID()),
-	}
-}
-
 // The Gateway-level filters only select Routes with an accepted parent belonging
 // to the Gateway or one of its attached ListenerSets. Listener-specific policy
 // and hostname checks happen during model ingestion, where the parent source is
@@ -1226,25 +1175,6 @@ func (r *gatewayReconciler) setListenerStatus(ctx context.Context, gw *gatewayv1
 	default:
 		return ListenersStatusAllValid
 	}
-}
-
-func validateTLSSecret(ctx context.Context, c client.Client, namespace, name string) error {
-	secret := &corev1.Secret{}
-	if err := c.Get(ctx, client.ObjectKey{
-		Namespace: namespace,
-		Name:      name,
-	}, secret); err != nil {
-		return err
-	}
-
-	if !helpers.IsValidPemFormat(secret.Data[corev1.TLSCertKey]) {
-		return fmt.Errorf("PEM format error in TLS Certificate")
-	}
-
-	if !helpers.IsValidPemFormat(secret.Data[corev1.TLSPrivateKeyKey]) {
-		return fmt.Errorf("PEM format error in TLS Key")
-	}
-	return nil
 }
 
 func (r *gatewayReconciler) handleReconcileErrorWithStatus(ctx context.Context, reconcileErr error, original *gatewayv1.Gateway, modified *gatewayv1.Gateway) (ctrl.Result, error) {
