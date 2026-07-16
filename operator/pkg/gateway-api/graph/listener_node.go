@@ -6,40 +6,40 @@ package graph
 import gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 func (node *ListenerNode) AddRoutes(
-	httpRoutes []gatewayv1.HTTPRoute,
-	grpcRoutes []gatewayv1.GRPCRoute,
-	tlsRoutes []gatewayv1.TLSRoute,
-	tcpRoutes []gatewayv1.TCPRoute,
-	udpRoutes []gatewayv1.UDPRoute,
+	httpRoutes *gatewayv1.HTTPRouteList,
+	grpcRoutes *gatewayv1.GRPCRouteList,
+	tlsRoutes *gatewayv1.TLSRouteList,
+	tcpRoutes *gatewayv1.TCPRouteList,
+	udpRoutes *gatewayv1.UDPRouteList,
 ) {
-	for index := range httpRoutes {
-		route := &httpRoutes[index]
+	for index := range httpRoutes.Items {
+		route := &httpRoutes.Items[index]
 		if node.parentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
-			node.HTTPRoutes = append(node.HTTPRoutes, &HTTPRouteNode{Route: *route})
+			node.HTTPRoutes = append(node.HTTPRoutes, &HTTPRouteNode{Route: route})
 		}
 	}
-	for index := range grpcRoutes {
-		route := &grpcRoutes[index]
+	for index := range grpcRoutes.Items {
+		route := &grpcRoutes.Items[index]
 		if node.parentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
-			node.GRPCRoutes = append(node.GRPCRoutes, &GRPCRouteNode{Route: *route})
+			node.GRPCRoutes = append(node.GRPCRoutes, &GRPCRouteNode{Route: route})
 		}
 	}
-	for index := range tlsRoutes {
-		route := &tlsRoutes[index]
+	for index := range tlsRoutes.Items {
+		route := &tlsRoutes.Items[index]
 		if node.parentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
-			node.TLSRoutes = append(node.TLSRoutes, &TLSRouteNode{Route: *route})
+			node.TLSRoutes = append(node.TLSRoutes, &TLSRouteNode{Route: route})
 		}
 	}
-	for index := range tcpRoutes {
-		route := &tcpRoutes[index]
+	for index := range tcpRoutes.Items {
+		route := &tcpRoutes.Items[index]
 		if node.parentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
-			node.TCPRoutes = append(node.TCPRoutes, &TCPRouteNode{Route: *route})
+			node.TCPRoutes = append(node.TCPRoutes, &TCPRouteNode{Route: route})
 		}
 	}
-	for index := range udpRoutes {
-		route := &udpRoutes[index]
+	for index := range udpRoutes.Items {
+		route := &udpRoutes.Items[index]
 		if node.parentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
-			node.UDPRoutes = append(node.UDPRoutes, &UDPRouteNode{Route: *route})
+			node.UDPRoutes = append(node.UDPRoutes, &UDPRouteNode{Route: route})
 		}
 	}
 }

@@ -13,7 +13,7 @@ import (
 
 func TestGatewayNodeStatusConditions(t *testing.T) {
 	node := &GatewayNode{
-		Gateway: gatewayv1.Gateway{
+		Gateway: &gatewayv1.Gateway{
 			ObjectMeta: metav1.ObjectMeta{Generation: 42},
 		},
 	}

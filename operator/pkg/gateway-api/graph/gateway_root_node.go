@@ -13,8 +13,8 @@ import (
 )
 
 func BuildRoot(
-	gateway gatewayv1.Gateway,
-	gatewayClass gatewayv1.GatewayClass,
+	gateway *gatewayv1.Gateway,
+	gatewayClass *gatewayv1.GatewayClass,
 	gatewayClassConfig *v2alpha1.CiliumGatewayClassConfig,
 ) *GatewayRootNode {
 	root := &GatewayRootNode{
@@ -37,17 +37,17 @@ func (root *GatewayRootNode) ValidateGatewayClassNode() error {
 }
 
 func (root *GatewayRootNode) GetGateway() *gatewayv1.Gateway {
-	return &root.GatewayClass.Gateway.Gateway
+	return root.GatewayClass.Gateway.Gateway
 }
 
-func (root *GatewayRootNode) AddListenerSets(listenerSets []gatewayv1.ListenerSet) {
-	for index := range listenerSets {
-		listenerSet := &listenerSets[index]
-		node := &ListenerSetNode{ListenerSet: *listenerSet}
+func (root *GatewayRootNode) AddListenerSets(listenerSets *gatewayv1.ListenerSetList) {
+	for index := range listenerSets.Items {
+		listenerSet := &listenerSets.Items[index]
+		node := &ListenerSetNode{ListenerSet: listenerSet}
 		for _, entry := range listenerSet.Spec.Listeners {
 			node.Listeners = append(node.Listeners, &ListenerNode{
 				Listener:    helpers.ListenerEntryToListener(entry),
-				ListenerSet: &node.ListenerSet,
+				ListenerSet: listenerSet,
 				Valid:       true,
 			})
 		}
@@ -57,11 +57,11 @@ func (root *GatewayRootNode) AddListenerSets(listenerSets []gatewayv1.ListenerSe
 }
 
 func (root *GatewayRootNode) AddRoutes(
-	httpRoutes []gatewayv1.HTTPRoute,
-	grpcRoutes []gatewayv1.GRPCRoute,
-	tlsRoutes []gatewayv1.TLSRoute,
-	tcpRoutes []gatewayv1.TCPRoute,
-	udpRoutes []gatewayv1.UDPRoute,
+	httpRoutes *gatewayv1.HTTPRouteList,
+	grpcRoutes *gatewayv1.GRPCRouteList,
+	tlsRoutes *gatewayv1.TLSRouteList,
+	tcpRoutes *gatewayv1.TCPRouteList,
+	udpRoutes *gatewayv1.UDPRouteList,
 ) {
 	for _, listener := range root.GatewayClass.Gateway.Listeners {
 		listener.AddRoutes(httpRoutes, grpcRoutes, tlsRoutes, tcpRoutes, udpRoutes)
@@ -73,30 +73,40 @@ func (root *GatewayRootNode) AddRoutes(
 	}
 }
 
-func (root *GatewayRootNode) AddReferenceGrants(grants []gatewayv1.ReferenceGrant) {
-	root.GatewayClass.Gateway.ReferenceGrants = grants
+func (root *GatewayRootNode) AddReferenceGrants(grants *gatewayv1.ReferenceGrantList) {
+	root.GatewayClass.Gateway.ReferenceGrants = make([]*gatewayv1.ReferenceGrant, len(grants.Items))
+	for index := range grants.Items {
+		root.GatewayClass.Gateway.ReferenceGrants[index] = &grants.Items[index]
+	}
 }
 
-func (root *GatewayRootNode) AddNamespaces(namespaces []corev1.Namespace) {
-	root.GatewayClass.Gateway.Namespaces = namespaces
+func (root *GatewayRootNode) AddNamespaces(namespaces *corev1.NamespaceList) {
+	root.GatewayClass.Gateway.Namespaces = make([]*corev1.Namespace, len(namespaces.Items))
+	for index := range namespaces.Items {
+		root.GatewayClass.Gateway.Namespaces[index] = &namespaces.Items[index]
+	}
 }
 
 func (root *GatewayRootNode) PopulateAllowedRouteNamespaces() {
 	gateway := root.GatewayClass.Gateway
+	namespaces := namespaceValues(gateway.Namespaces)
 	for _, listener := range gateway.Listeners {
 		listener.AllowedRouteNamespaces = helpers.AllowedRouteNamespaces(
-			listener.Listener, listener.Gateway.GetNamespace(), gateway.Namespaces)
+			listener.Listener, listener.Gateway.GetNamespace(), namespaces)
 	}
 	for _, listenerSet := range gateway.ListenerSets {
 		for _, listener := range listenerSet.Listeners {
 			listener.AllowedRouteNamespaces = helpers.AllowedRouteNamespaces(
-				listener.Listener, listener.ListenerSet.GetNamespace(), gateway.Namespaces)
+				listener.Listener, listener.ListenerSet.GetNamespace(), namespaces)
 		}
 	}
 }
 
-func (root *GatewayRootNode) AddServices(services []corev1.Service) {
-	root.GatewayClass.Gateway.Services = services
+func (root *GatewayRootNode) AddServices(services *corev1.ServiceList) {
+	root.GatewayClass.Gateway.Services = make([]*corev1.Service, len(services.Items))
+	for index := range services.Items {
+		root.GatewayClass.Gateway.Services[index] = &services.Items[index]
+	}
 }
 
 func (root *GatewayRootNode) AddBackendTLSPolicyMap(policyMap helpers.BackendTLSPolicyServiceMap) {
@@ -165,4 +175,20 @@ func (root *GatewayRootNode) addGatewayListeners() {
 			Valid:    true,
 		})
 	}
+}
+
+func namespaceValues(namespaces []*corev1.Namespace) []corev1.Namespace {
+	values := make([]corev1.Namespace, len(namespaces))
+	for index, namespace := range namespaces {
+		values[index] = *namespace
+	}
+	return values
+}
+
+func referenceGrantValues(grants []*gatewayv1.ReferenceGrant) []gatewayv1.ReferenceGrant {
+	values := make([]gatewayv1.ReferenceGrant, len(grants))
+	for index, grant := range grants {
+		values[index] = *grant
+	}
+	return values
 }

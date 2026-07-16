@@ -104,7 +104,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return controllerruntime.Success()
 	}
 
-	graphRoot := graph.BuildRoot(*gw, *gwc, r.getGatewayClassConfig(ctx, gwc))
+	graphRoot := graph.BuildRoot(gw, gwc, r.getGatewayClassConfig(ctx, gwc))
 	if err := graphRoot.ValidateGatewayNode(); err != nil {
 		return r.handleReconcileErrorWithStatus(ctx, err, original, graphRoot.GetGateway())
 	}
@@ -113,9 +113,9 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return r.handleReconcileErrorWithStatus(ctx, err, original, graphRoot.GetGateway())
 	}
 
+	listenerSetList := &gatewayv1.ListenerSetList{}
 	var allAttachedListenerSets []gatewayv1.ListenerSet
 	if helpers.HasListenerSetSupport(r.Client.Scheme()) {
-		listenerSetList := &gatewayv1.ListenerSetList{}
 		if err := r.Client.List(ctx, listenerSetList, &client.ListOptions{
 			FieldSelector: fields.OneTermEqualSelector(indexers.ListenerSetGatewayIndex, client.ObjectKeyFromObject(gw).String()),
 		}); err != nil {
@@ -123,12 +123,12 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			return r.handleReconcileErrorWithStatus(ctx, err, original, gw)
 		}
 		allAttachedListenerSets = listenerSetList.Items
-		graphRoot.AddListenerSets(allAttachedListenerSets)
+		graphRoot.AddListenerSets(listenerSetList)
 	}
 
+	namespaceList := &corev1.NamespaceList{}
 	var namespaces []corev1.Namespace
 	if graphRoot.HasNamespaceLabelSelector() {
-		namespaceList := &corev1.NamespaceList{}
 		if err := r.Client.List(ctx, namespaceList); err != nil {
 			scopedLog.ErrorContext(ctx, "Unable to list Namespaces", logfields.Error, err)
 			return r.handleReconcileErrorWithStatus(ctx, err, original, gw)
@@ -292,15 +292,15 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		ctx, r.Client, helpers.TLSSecretReferences(gw, allAttachedListenerSets))
 
 	graphRoot.AddRoutes(
-		httpRouteList.Items,
-		grpcRouteList.Items,
-		tlsRouteList.Items,
-		tcpRouteList.Items,
-		udpRouteList.Items,
+		httpRouteList,
+		grpcRouteList,
+		tlsRouteList,
+		tcpRouteList,
+		udpRouteList,
 	)
-	graphRoot.AddReferenceGrants(grants.Items)
-	graphRoot.AddNamespaces(namespaces)
-	graphRoot.AddServices(servicesList.Items)
+	graphRoot.AddReferenceGrants(grants)
+	graphRoot.AddNamespaces(namespaceList)
+	graphRoot.AddServices(servicesList)
 	graphRoot.AddBackendTLSPolicyMap(btlspMap)
 	graphRoot.AddTLSSecrets(tlsSecrets)
 	graphRoot.PopulateAllowedRouteNamespaces()
@@ -738,7 +738,7 @@ func allowedListenerSets(graphRoot *graph.GatewayRootNode) []gatewayv1.ListenerS
 	var allowed []gatewayv1.ListenerSet
 	for _, lsn := range graphRoot.GatewayClass.Gateway.ListenerSets {
 		if lsn.Allowed {
-			allowed = append(allowed, lsn.ListenerSet)
+			allowed = append(allowed, *lsn.ListenerSet)
 		}
 	}
 	return allowed
@@ -1215,69 +1215,34 @@ func (r *gatewayReconciler) setListenerSetStatuses(
 	udpRoutes *gatewayv1.UDPRouteList,
 	namespaceLabels helpers.NamespaceLabelIndex,
 ) {
-	gw.Status.AttachedListenerSets = nil
-
-	var validAttachedCount int32
-	for _, lsNode := range graphRoot.GatewayClass.Gateway.ListenerSets {
-		ls := &lsNode.ListenerSet
-		original := ls.DeepCopy()
-
-		if !lsNode.Allowed {
-			ls.Status.Listeners = nil
-			setListenerSetAccepted(ls, false, "ListenerSet is not allowed by the Gateway's allowedListeners policy", gatewayv1.ListenerSetReasonNotAllowed)
-			setListenerSetProgrammed(ls, false, "ListenerSet is not allowed by the Gateway's allowedListeners policy", gatewayv1.ListenerSetReasonNotAllowed)
-			if err := r.updateListenerSetStatus(ctx, original, ls); err != nil {
-				r.logger.ErrorContext(ctx, "Unable to update ListenerSet status", logfields.Error, err,
-					logfields.Resource, client.ObjectKeyFromObject(ls).String())
-			}
-			continue
-		}
-
-		oneValidListener := false
-		var listenerStatuses []gatewayv1.ListenerEntryStatus
-
-		for _, ln := range lsNode.Listeners {
-			l := ln.Listener
-
-			if ln.Valid {
-				oneValidListener = true
-			}
-
-			lsSource := listenerSetFQR(ls)
-			var attachedRoutes int32
-			attachedRoutes += int32(len(r.filterHTTPRoutesByListener(ctx, gw, &l, &lsSource, httpRoutes.Items, namespaceLabels, *ls)))
-			attachedRoutes += int32(len(r.filterGRPCRoutesByListener(ctx, gw, &l, &lsSource, grpcRoutes.Items, namespaceLabels, *ls)))
-			attachedRoutes += int32(len(r.filterTLSRoutesByListener(ctx, gw, &l, &lsSource, tlsRoutes.Items, namespaceLabels, *ls)))
-			attachedRoutes += int32(len(r.filterTCPRoutesByListener(ctx, gw, &l, &lsSource, tcpRoutes.Items, namespaceLabels, *ls)))
-			attachedRoutes += int32(len(r.filterUDPRoutesByListener(ctx, gw, &l, &lsSource, udpRoutes.Items, namespaceLabels, *ls)))
-
-			listenerStatuses = append(listenerStatuses, gatewayv1.ListenerEntryStatus{
-				Name:           l.Name,
-				SupportedKinds: ln.SupportedKinds,
-				Conditions:     ln.Conditions,
-				AttachedRoutes: attachedRoutes,
-			})
-		}
-
-		ls.Status.Listeners = listenerStatuses
-
-		if oneValidListener {
-			validAttachedCount++
-			setListenerSetAccepted(ls, true, "ListenerSet is accepted", gatewayv1.ListenerSetReasonAccepted)
-			setListenerSetProgrammed(ls, true, "ListenerSet is programmed", gatewayv1.ListenerSetReasonProgrammed)
-		} else {
-			setListenerSetAccepted(ls, false, "No valid listeners", gatewayv1.ListenerSetReasonListenersNotValid)
-			setListenerSetProgrammed(ls, false, "No valid listeners", gatewayv1.ListenerSetReasonListenersNotValid)
-		}
-
-		if err := r.updateListenerSetStatus(ctx, original, ls); err != nil {
-			r.logger.ErrorContext(ctx, "Unable to update ListenerSet status", logfields.Error, err,
-				logfields.Resource, client.ObjectKeyFromObject(ls).String())
+	attachedRoutes := make(map[*graph.ListenerNode]int32)
+	originalListenerSets := make(map[*graph.ListenerSetNode]*gatewayv1.ListenerSet)
+	for _, listenerSetNode := range graphRoot.GatewayClass.Gateway.ListenerSets {
+		listenerSet := listenerSetNode.ListenerSet
+		originalListenerSets[listenerSetNode] = listenerSet.DeepCopy()
+		for _, listenerNode := range listenerSetNode.Listeners {
+			listener := listenerNode.Listener
+			listenerSource := listenerSetFQR(listenerSet)
+			attachedRoutes[listenerNode] += int32(len(r.filterHTTPRoutesByListener(
+				ctx, gw, &listener, &listenerSource, httpRoutes.Items, namespaceLabels, *listenerSet)))
+			attachedRoutes[listenerNode] += int32(len(r.filterGRPCRoutesByListener(
+				ctx, gw, &listener, &listenerSource, grpcRoutes.Items, namespaceLabels, *listenerSet)))
+			attachedRoutes[listenerNode] += int32(len(r.filterTLSRoutesByListener(
+				ctx, gw, &listener, &listenerSource, tlsRoutes.Items, namespaceLabels, *listenerSet)))
+			attachedRoutes[listenerNode] += int32(len(r.filterTCPRoutesByListener(
+				ctx, gw, &listener, &listenerSource, tcpRoutes.Items, namespaceLabels, *listenerSet)))
+			attachedRoutes[listenerNode] += int32(len(r.filterUDPRoutesByListener(
+				ctx, gw, &listener, &listenerSource, udpRoutes.Items, namespaceLabels, *listenerSet)))
 		}
 	}
 
-	if validAttachedCount > 0 {
-		gw.Status.AttachedListenerSets = &validAttachedCount
+	graphRoot.SetListenerSetStatuses(attachedRoutes)
+	for listenerSetNode, originalListenerSet := range originalListenerSets {
+		listenerSet := listenerSetNode.ListenerSet
+		if err := r.updateListenerSetStatus(ctx, originalListenerSet, listenerSet); err != nil {
+			r.logger.ErrorContext(ctx, "Unable to update ListenerSet status", logfields.Error, err,
+				logfields.Resource, client.ObjectKeyFromObject(listenerSet).String())
+		}
 	}
 }
 

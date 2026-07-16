@@ -84,7 +84,8 @@ type BackendTLSPolicyServiceMap map[types.NamespacedName]*BackendTLSPolicyTarget
 func BuildBackendTLSPolicyLookup(btlspList *gatewayv1.BackendTLSPolicyList) BackendTLSPolicyServiceMap {
 	lookupMap := make(BackendTLSPolicyServiceMap)
 
-	for _, currentBTLSP := range btlspList.Items {
+	for index := range btlspList.Items {
+		currentBTLSP := &btlspList.Items[index]
 		for _, targetRef := range currentBTLSP.Spec.TargetRefs {
 			if !IsServiceTargetRef(targetRef) {
 				continue
@@ -105,7 +106,7 @@ func BuildBackendTLSPolicyLookup(btlspList *gatewayv1.BackendTLSPolicyList) Back
 			if !ok {
 				// If the targetRef isn't there, we add it, and then add this policy as valid.
 				lookupMap[svcName] = &BackendTLSPolicyTargetServiceCollection{}
-				lookupMap[svcName].UpsertValidPolicy(sectionName, &currentBTLSP)
+				lookupMap[svcName].UpsertValidPolicy(sectionName, currentBTLSP)
 				continue
 			}
 
@@ -113,12 +114,12 @@ func BuildBackendTLSPolicyLookup(btlspList *gatewayv1.BackendTLSPolicyList) Back
 			existingBTLSP, ok := existingCollection.Valid[sectionName]
 			if !ok {
 				// There's no entry for this section name, so we create one and continue.
-				existingCollection.UpsertValidPolicy(sectionName, &currentBTLSP)
+				existingCollection.UpsertValidPolicy(sectionName, currentBTLSP)
 				continue
 			}
 
 			// Get the full names of everything
-			currentName := client.ObjectKeyFromObject(&currentBTLSP)
+			currentName := client.ObjectKeyFromObject(currentBTLSP)
 			existingName := client.ObjectKeyFromObject(existingBTLSP)
 
 			if currentName == existingName {
@@ -133,14 +134,14 @@ func BuildBackendTLSPolicyLookup(btlspList *gatewayv1.BackendTLSPolicyList) Back
 				// Move the existing policy into the Conflicted map
 				lookupMap[svcName].UpsertConflictedPolicy(existingName, existingBTLSP)
 				// Upsert the current BTLSP into the Valid set.
-				lookupMap[svcName].UpsertValidPolicy(sectionName, &currentBTLSP)
+				lookupMap[svcName].UpsertValidPolicy(sectionName, currentBTLSP)
 				continue
 			}
 
 			if existingBTLSP.ObjectMeta.CreationTimestamp.Before(&currentBTLSP.ObjectMeta.CreationTimestamp) {
 				// if the existing policy has an older creation time, it wins
 				// Move the current policy into the Conflicted map
-				lookupMap[svcName].UpsertConflictedPolicy(currentName, &currentBTLSP)
+				lookupMap[svcName].UpsertConflictedPolicy(currentName, currentBTLSP)
 				// The existing BTLSP is already in the Valid set, nothing more to do.
 				continue
 			}
@@ -151,12 +152,12 @@ func BuildBackendTLSPolicyLookup(btlspList *gatewayv1.BackendTLSPolicyList) Back
 				// Move the existing policy into the Conflicted map
 				lookupMap[svcName].UpsertConflictedPolicy(existingName, existingBTLSP)
 				// Upsert the current BTLSP into the Valid set.
-				lookupMap[svcName].UpsertValidPolicy(sectionName, &currentBTLSP)
+				lookupMap[svcName].UpsertValidPolicy(sectionName, currentBTLSP)
 				continue
 			}
 
 			// Otherwise, the current policy is conflicted.
-			lookupMap[svcName].UpsertConflictedPolicy(currentName, &currentBTLSP)
+			lookupMap[svcName].UpsertConflictedPolicy(currentName, currentBTLSP)
 		}
 	}
 	return lookupMap

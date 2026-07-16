@@ -27,8 +27,9 @@ import (
 // decide whether to validate a ListenerSet's listeners.
 func (root *GatewayRootNode) ValidateAllowedListenerSets() {
 	gw := root.GatewayClass.Gateway
+	namespaces := namespaceValues(gw.Namespaces)
 	for _, lsn := range gw.ListenerSets {
-		lsn.Allowed = helpers.GatewayAllowsListenerSet(gw.Gateway, lsn.ListenerSet, gw.Namespaces)
+		lsn.Allowed = helpers.GatewayAllowsListenerSet(*gw.Gateway, *lsn.ListenerSet, namespaces)
 	}
 }
 
@@ -37,6 +38,7 @@ func (root *GatewayRootNode) ValidateAllowedListenerSets() {
 // SupportedKinds on each ListenerNode.
 func (root *GatewayRootNode) ValidateListeners() {
 	gw := root.GatewayClass.Gateway
+	referenceGrants := referenceGrantValues(gw.ReferenceGrants)
 
 	conflicts := conflictedListeners(gw.Listeners)
 
@@ -46,7 +48,7 @@ func (root *GatewayRootNode) ValidateListeners() {
 			gw.Gateway.GetGeneration(),
 			gw.Gateway.GetNamespace(),
 			"Gateway",
-			gw.ReferenceGrants,
+			referenceGrants,
 			gw.TLSSecrets,
 			conflicts,
 			false,
@@ -76,7 +78,7 @@ func (root *GatewayRootNode) ValidateListeners() {
 				lsn.ListenerSet.GetGeneration(),
 				lsn.ListenerSet.GetNamespace(),
 				"ListenerSet",
-				gw.ReferenceGrants,
+				referenceGrants,
 				gw.TLSSecrets,
 				lsConflicts,
 				true,

@@ -13,7 +13,7 @@ import (
 )
 
 func (node *GatewayClassNode) Validate() error {
-	ref := node.Spec.ParametersRef
+	ref := node.GatewayClass.Spec.ParametersRef
 	if ref == nil {
 		return nil
 	}

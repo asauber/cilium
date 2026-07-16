@@ -18,20 +18,20 @@ type GatewayRootNode struct {
 }
 
 type GatewayClassNode struct {
-	gatewayv1.GatewayClass
+	GatewayClass       *gatewayv1.GatewayClass
 	GatewayClassConfig *v2alpha1.CiliumGatewayClassConfig
 	Gateway            *GatewayNode
 }
 
 type GatewayNode struct {
-	Gateway gatewayv1.Gateway
+	Gateway *gatewayv1.Gateway
 
 	Listeners    []*ListenerNode
 	ListenerSets []*ListenerSetNode
 
-	ReferenceGrants     []gatewayv1.ReferenceGrant
-	Services            []corev1.Service
-	Namespaces          []corev1.Namespace
+	ReferenceGrants     []*gatewayv1.ReferenceGrant
+	Services            []*corev1.Service
+	Namespaces          []*corev1.Namespace
 	BackendTLSPolicyMap helpers.BackendTLSPolicyServiceMap
 	TLSSecrets          map[types.NamespacedName]*TLSSecret
 }
@@ -43,7 +43,7 @@ type TLSSecret struct {
 }
 
 type ListenerSetNode struct {
-	ListenerSet gatewayv1.ListenerSet
+	ListenerSet *gatewayv1.ListenerSet
 
 	Allowed bool
 
@@ -69,24 +69,24 @@ type ListenerNode struct {
 }
 
 type HTTPRouteNode struct {
-	Route         gatewayv1.HTTPRoute
+	Route         *gatewayv1.HTTPRoute
 	ComputedHosts []string
 }
 
 type GRPCRouteNode struct {
-	Route         gatewayv1.GRPCRoute
+	Route         *gatewayv1.GRPCRoute
 	ComputedHosts []string
 }
 
 type TLSRouteNode struct {
-	Route         gatewayv1.TLSRoute
+	Route         *gatewayv1.TLSRoute
 	ComputedHosts []string
 }
 
 type TCPRouteNode struct {
-	Route gatewayv1.TCPRoute
+	Route *gatewayv1.TCPRoute
 }
 
 type UDPRouteNode struct {
-	Route gatewayv1.UDPRoute
+	Route *gatewayv1.UDPRoute
 }
