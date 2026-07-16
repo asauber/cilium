@@ -51,10 +51,11 @@ func Test_sortListenerSets(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			graph.SortListenerSets(tt.input)
+			root := graph.BuildRoot(gatewayv1.Gateway{}, gatewayv1.GatewayClass{}, nil)
+			root.AddListenerSets(tt.input)
 			var got []string
-			for _, ls := range tt.input {
-				got = append(got, ls.GetNamespace()+"/"+ls.GetName())
+			for _, listenerSet := range root.GatewayClass.Gateway.ListenerSets {
+				got = append(got, listenerSet.ListenerSet.GetNamespace()+"/"+listenerSet.ListenerSet.GetName())
 			}
 			require.Equal(t, tt.expected, got)
 		})

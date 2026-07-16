@@ -1069,7 +1069,7 @@ func Test_gatewayReconciler_setListenerStatus(t *testing.T) {
 					Build(),
 			}
 
-			graphRoot := graph.Build(graph.BuildInput{Gateway: *gw})
+			graphRoot := graph.BuildRoot(*gw, gatewayv1.GatewayClass{}, nil)
 			graph.ValidateListeners(graphRoot, nil, func(namespace, name string) error {
 				return nil
 			})

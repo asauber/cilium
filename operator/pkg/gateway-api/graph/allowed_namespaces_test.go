@@ -11,8 +11,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
-
-	"github.com/cilium/cilium/operator/pkg/model"
 )
 
 func listenerWithNamespaces(from *gatewayv1.FromNamespaces, selector *metav1.LabelSelector) gatewayv1.Listener {
@@ -28,26 +26,26 @@ func listenerWithNamespaces(from *gatewayv1.FromNamespaces, selector *metav1.Lab
 	return l
 }
 
-func Test_ResolveAllowedRouteNamespaces(t *testing.T) {
+func TestGatewayRootNodePopulateAllowedRouteNamespaces(t *testing.T) {
 	namespaces := []corev1.Namespace{
 		{ObjectMeta: metav1.ObjectMeta{Name: "prod", Labels: map[string]string{"env": "prod"}}},
 	}
 	root := &GatewayRootNode{
 		GatewayClass: &GatewayClassNode{
 			Gateway: &GatewayNode{
+				Gateway:    gatewayv1.Gateway{ObjectMeta: metav1.ObjectMeta{Namespace: "gw-ns"}},
 				Namespaces: namespaces,
 				Listeners: []*ListenerNode{
 					{
 						Listener: listenerWithNamespaces(ptr.To(gatewayv1.NamespacesFromSame), nil),
-						Source:   model.FullyQualifiedResource{Kind: "Gateway", Namespace: "gw-ns"},
 					},
 				},
 				ListenerSets: []*ListenerSetNode{
 					{
+						ListenerSet: gatewayv1.ListenerSet{ObjectMeta: metav1.ObjectMeta{Namespace: "ls-ns"}},
 						Listeners: []*ListenerNode{
 							{
 								Listener: listenerWithNamespaces(ptr.To(gatewayv1.NamespacesFromSame), nil),
-								Source:   model.FullyQualifiedResource{Kind: "ListenerSet", Namespace: "ls-ns"},
 							},
 						},
 					},
@@ -55,8 +53,11 @@ func Test_ResolveAllowedRouteNamespaces(t *testing.T) {
 			},
 		},
 	}
+	root.GatewayClass.Gateway.Listeners[0].Gateway = &root.GatewayClass.Gateway.Gateway
+	root.GatewayClass.Gateway.ListenerSets[0].Listeners[0].ListenerSet =
+		&root.GatewayClass.Gateway.ListenerSets[0].ListenerSet
 
-	ResolveAllowedRouteNamespaces(root)
+	root.PopulateAllowedRouteNamespaces()
 
 	assert.Equal(t, map[string]struct{}{"gw-ns": {}},
 		root.GatewayClass.Gateway.Listeners[0].AllowedRouteNamespaces,

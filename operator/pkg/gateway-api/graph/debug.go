@@ -36,9 +36,9 @@ func logListenerSummary(log *slog.Logger, ln *ListenerNode, indent string) {
 	if ln.Listener.Hostname != nil {
 		host = fmt.Sprintf(" host=%s", *ln.Listener.Hostname)
 	}
-	log.Debug(fmt.Sprintf("Graph: %sListener %s port=%d proto=%s%s source=%s/%s",
+	log.Debug(fmt.Sprintf("Graph: %sListener %s port=%d proto=%s%s parent=%s/%s",
 		indent, ln.Listener.Name, ln.Listener.Port, ln.Listener.Protocol,
-		host, ln.Source.Kind, ln.Source.Name))
+		host, ln.parentKind(), ln.parentName()))
 
 	logRoutes(log, indent+"  ", "HTTPRoute", ln.HTTPRoutes, func(n *HTTPRouteNode) string {
 		return n.Route.GetNamespace() + "/" + n.Route.GetName()

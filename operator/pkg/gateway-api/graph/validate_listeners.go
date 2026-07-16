@@ -24,7 +24,7 @@ type TLSSecretValidator func(namespace, name string) error
 // ListenerSetNode. It operates at ListenerSet granularity: it decides whether a
 // whole ListenerSet is admitted to the Gateway, matching each ListenerSet's own
 // namespace against the policy. It does not resolve per-listener Route
-// namespaces; that is ResolveAllowedRouteNamespaces.
+// namespaces; that is GatewayRootNode.PopulateAllowedRouteNamespaces.
 //
 // It must run before ValidateListeners, which relies on the Allowed field to
 // decide whether to validate a ListenerSet's listeners.

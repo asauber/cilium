@@ -288,23 +288,20 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			" At a future date this annotation will be removed if no spec.addresses are set.", gw.GetNamespace(), gw.GetName(), annotation.LBIPAMIPKeyAlias))
 	}
 
-	graphRoot = graph.Build(graph.BuildInput{
-		GatewayClass:        *gwc,
-		GatewayClassConfig:  graphRoot.GatewayClass.GatewayClassConfig,
-		Gateway:             *gw,
-		ListenerSets:        allAttachedListenerSets,
-		HTTPRoutes:          httpRouteList.Items,
-		GRPCRoutes:          grpcRouteList.Items,
-		TLSRoutes:           tlsRouteList.Items,
-		TCPRoutes:           tcpRouteList.Items,
-		UDPRoutes:           udpRouteList.Items,
-		ReferenceGrants:     grants.Items,
-		Namespaces:          namespaces,
-		Services:            servicesList.Items,
-		BackendTLSPolicyMap: btlspMap,
-	})
+	graphRoot.AddRoutes(
+		httpRouteList.Items,
+		grpcRouteList.Items,
+		tlsRouteList.Items,
+		tcpRouteList.Items,
+		udpRouteList.Items,
+	)
+	graphRoot.AddReferenceGrants(grants.Items)
+	graphRoot.AddNamespaces(namespaces)
+	graphRoot.AddServices(servicesList.Items)
+	graphRoot.AddBackendTLSPolicyMap(btlspMap)
+
 	graph.ValidateAllowedListenerSets(graphRoot)
-	graph.ResolveAllowedRouteNamespaces(graphRoot)
+	graphRoot.PopulateAllowedRouteNamespaces()
 	graph.ValidateListeners(graphRoot, grants.Items, func(namespace, name string) error {
 		return validateTLSSecret(ctx, r.Client, namespace, name)
 	})
@@ -786,7 +783,7 @@ func checkableParentRefs(refs []gatewayv1.ParentReference, routeNamespace string
 
 // buildMergedListeners derives the ingestion listener set from the validated
 // graph: every Gateway listener plus the listeners of each admitted ListenerSet,
-// each carrying the namespaces resolved by graph.ResolveAllowedRouteNamespaces.
+// each carrying the namespaces resolved by graphRoot.PopulateAllowedRouteNamespaces.
 // Building this from the graph keeps Gateway-direct and ListenerSet listeners
 // uniform and removes the need for a separate hand-built merge.
 func buildMergedListeners(graphRoot *graph.GatewayRootNode) []ingestion.ListenerWithContext {
@@ -796,7 +793,7 @@ func buildMergedListeners(graphRoot *graph.GatewayRootNode) []ingestion.Listener
 	for _, ln := range gw.Listeners {
 		merged = append(merged, ingestion.ListenerWithContext{
 			Listener:          ln.Listener,
-			Source:            ln.Source,
+			Source:            listenerSource(ln),
 			AllowedNamespaces: ln.AllowedRouteNamespaces,
 		})
 	}
@@ -807,12 +804,34 @@ func buildMergedListeners(graphRoot *graph.GatewayRootNode) []ingestion.Listener
 		for _, ln := range lsn.Listeners {
 			merged = append(merged, ingestion.ListenerWithContext{
 				Listener:          ln.Listener,
-				Source:            ln.Source,
+				Source:            listenerSource(ln),
 				AllowedNamespaces: ln.AllowedRouteNamespaces,
 			})
 		}
 	}
 	return merged
+}
+
+func listenerSource(listener *graph.ListenerNode) model.FullyQualifiedResource {
+	if listener.Gateway != nil {
+		return model.FullyQualifiedResource{
+			Name:      listener.Gateway.GetName(),
+			Namespace: listener.Gateway.GetNamespace(),
+			Group:     gatewayv1.SchemeGroupVersion.Group,
+			Version:   gatewayv1.SchemeGroupVersion.Version,
+			Kind:      "Gateway",
+			UID:       string(listener.Gateway.GetUID()),
+		}
+	}
+
+	return model.FullyQualifiedResource{
+		Name:      listener.ListenerSet.GetName(),
+		Namespace: listener.ListenerSet.GetNamespace(),
+		Group:     gatewayv1.SchemeGroupVersion.Group,
+		Version:   gatewayv1.SchemeGroupVersion.Version,
+		Kind:      "ListenerSet",
+		UID:       string(listener.ListenerSet.GetUID()),
+	}
 }
 
 // The Gateway-level filters only select Routes with an accepted parent belonging

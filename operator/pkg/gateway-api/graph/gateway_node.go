@@ -5,6 +5,7 @@ package graph
 
 import (
 	"errors"
+	"sort"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -78,4 +79,20 @@ func (node *GatewayNode) setCondition(update metav1.Condition) {
 	}
 
 	node.Gateway.Status.Conditions = append(node.Gateway.Status.Conditions, update)
+}
+
+func (node *GatewayNode) SortListenerSets() {
+	sort.Slice(node.ListenerSets, func(i, j int) bool {
+		left := node.ListenerSets[i].ListenerSet
+		right := node.ListenerSets[j].ListenerSet
+		leftTimestamp := left.CreationTimestamp.Time
+		rightTimestamp := right.CreationTimestamp.Time
+		if !leftTimestamp.Equal(rightTimestamp) {
+			return leftTimestamp.Before(rightTimestamp)
+		}
+
+		leftName := left.GetNamespace() + "/" + left.GetName()
+		rightName := right.GetNamespace() + "/" + right.GetName()
+		return leftName < rightName
+	})
 }

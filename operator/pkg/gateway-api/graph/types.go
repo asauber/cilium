@@ -9,7 +9,6 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
-	"github.com/cilium/cilium/operator/pkg/model"
 	"github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2alpha1"
 )
 
@@ -44,8 +43,9 @@ type ListenerSetNode struct {
 }
 
 type ListenerNode struct {
-	Listener gatewayv1.Listener
-	Source   model.FullyQualifiedResource
+	Listener    gatewayv1.Listener
+	Gateway     *gatewayv1.Gateway
+	ListenerSet *gatewayv1.ListenerSet
 
 	Valid          bool
 	Conditions     []metav1.Condition

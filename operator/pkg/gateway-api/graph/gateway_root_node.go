@@ -4,6 +4,7 @@
 package graph
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
@@ -15,13 +16,15 @@ func BuildRoot(
 	gatewayClass gatewayv1.GatewayClass,
 	gatewayClassConfig *v2alpha1.CiliumGatewayClassConfig,
 ) *GatewayRootNode {
-	return &GatewayRootNode{
+	root := &GatewayRootNode{
 		GatewayClass: &GatewayClassNode{
 			GatewayClass:       gatewayClass,
 			GatewayClassConfig: gatewayClassConfig,
 			Gateway:            &GatewayNode{Gateway: gateway},
 		},
 	}
+	root.addGatewayListeners()
+	return root
 }
 
 func (root *GatewayRootNode) ValidateGatewayNode() error {
@@ -38,10 +41,65 @@ func (root *GatewayRootNode) GetGateway() *gatewayv1.Gateway {
 
 func (root *GatewayRootNode) AddListenerSets(listenerSets []gatewayv1.ListenerSet) {
 	for index := range listenerSets {
-		root.GatewayClass.Gateway.ListenerSets = append(root.GatewayClass.Gateway.ListenerSets, &ListenerSetNode{
-			ListenerSet: listenerSets[index],
-		})
+		listenerSet := &listenerSets[index]
+		node := &ListenerSetNode{ListenerSet: *listenerSet}
+		for _, entry := range listenerSet.Spec.Listeners {
+			node.Listeners = append(node.Listeners, &ListenerNode{
+				Listener:    helpers.ListenerEntryToListener(entry),
+				ListenerSet: &node.ListenerSet,
+				Valid:       true,
+			})
+		}
+		root.GatewayClass.Gateway.ListenerSets = append(root.GatewayClass.Gateway.ListenerSets, node)
 	}
+	root.GatewayClass.Gateway.SortListenerSets()
+}
+
+func (root *GatewayRootNode) AddRoutes(
+	httpRoutes []gatewayv1.HTTPRoute,
+	grpcRoutes []gatewayv1.GRPCRoute,
+	tlsRoutes []gatewayv1.TLSRoute,
+	tcpRoutes []gatewayv1.TCPRoute,
+	udpRoutes []gatewayv1.UDPRoute,
+) {
+	for _, listener := range root.GatewayClass.Gateway.Listeners {
+		listener.AddRoutes(httpRoutes, grpcRoutes, tlsRoutes, tcpRoutes, udpRoutes)
+	}
+	for _, listenerSet := range root.GatewayClass.Gateway.ListenerSets {
+		for _, listener := range listenerSet.Listeners {
+			listener.AddRoutes(httpRoutes, grpcRoutes, tlsRoutes, tcpRoutes, udpRoutes)
+		}
+	}
+}
+
+func (root *GatewayRootNode) AddReferenceGrants(grants []gatewayv1.ReferenceGrant) {
+	root.GatewayClass.Gateway.ReferenceGrants = grants
+}
+
+func (root *GatewayRootNode) AddNamespaces(namespaces []corev1.Namespace) {
+	root.GatewayClass.Gateway.Namespaces = namespaces
+}
+
+func (root *GatewayRootNode) PopulateAllowedRouteNamespaces() {
+	gateway := root.GatewayClass.Gateway
+	for _, listener := range gateway.Listeners {
+		listener.AllowedRouteNamespaces = helpers.AllowedRouteNamespaces(
+			listener.Listener, listener.Gateway.GetNamespace(), gateway.Namespaces)
+	}
+	for _, listenerSet := range gateway.ListenerSets {
+		for _, listener := range listenerSet.Listeners {
+			listener.AllowedRouteNamespaces = helpers.AllowedRouteNamespaces(
+				listener.Listener, listener.ListenerSet.GetNamespace(), gateway.Namespaces)
+		}
+	}
+}
+
+func (root *GatewayRootNode) AddServices(services []corev1.Service) {
+	root.GatewayClass.Gateway.Services = services
+}
+
+func (root *GatewayRootNode) AddBackendTLSPolicyMap(policyMap helpers.BackendTLSPolicyServiceMap) {
+	root.GatewayClass.Gateway.BackendTLSPolicyMap = policyMap
 }
 
 func (root *GatewayRootNode) HasNamespaceLabelSelector() bool {
@@ -84,4 +142,14 @@ func hasNamespaceLabelSelector(listeners []gatewayv1.Listener) bool {
 	}
 
 	return false
+}
+
+func (root *GatewayRootNode) addGatewayListeners() {
+	for _, listener := range root.GetGateway().Spec.Listeners {
+		root.GatewayClass.Gateway.Listeners = append(root.GatewayClass.Gateway.Listeners, &ListenerNode{
+			Listener: listener,
+			Gateway:  root.GetGateway(),
+			Valid:    true,
+		})
+	}
 }
