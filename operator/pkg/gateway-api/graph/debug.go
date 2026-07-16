@@ -58,13 +58,7 @@ func logListenerSummary(log *slog.Logger, ln *ListenerNode, indent string) {
 	})
 }
 
-func logRoutes[T any](
-	log *slog.Logger,
-	indent string,
-	kind string,
-	routes []*T,
-	nameFunc func(*T) string,
-) {
+func logRoutes[T any](log *slog.Logger, indent, kind string, routes []*T, nameFunc func(*T) string) {
 	for _, r := range routes {
 		log.Debug(fmt.Sprintf("Graph: %s%s %s", indent, kind, nameFunc(r)))
 	}

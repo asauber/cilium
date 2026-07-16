@@ -222,8 +222,10 @@ func GatewayAPI(log *slog.Logger, input Input) *model.Model {
 
 			var httpRoutes []model.HTTPRoute
 
-			httpRoutes = append(httpRoutes, toHTTPRoutes(log, l.Listener, listenerHostnamesByProtocol, filteredHTTPRoutes, input.Services, input.ServiceImports, input.ReferenceGrants, input.BackendTLSPolicyMap)...)
-			httpRoutes = append(httpRoutes, toGRPCRoutes(l.Listener, listenerHostnamesByProtocol, filteredGRPCRoutes, input.Services, input.ServiceImports, input.ReferenceGrants)...)
+			httpRoutes = append(httpRoutes, toHTTPRoutes(log, l.Listener, listenerHostnamesByProtocol,
+				filteredHTTPRoutes, input.Services, input.ServiceImports, input.ReferenceGrants, input.BackendTLSPolicyMap)...)
+			httpRoutes = append(httpRoutes, toGRPCRoutes(l.Listener, listenerHostnamesByProtocol,
+				filteredGRPCRoutes, input.Services, input.ServiceImports, input.ReferenceGrants)...)
 			resHTTP = append(resHTTP, model.HTTPListener{
 				Name:                       string(l.Name),
 				Sources:                    []model.FullyQualifiedResource{l.Source},
@@ -238,11 +240,12 @@ func GatewayAPI(log *slog.Logger, input Input) *model.Model {
 
 			if l.Protocol == gatewayv1.TLSProtocolType {
 				resTLSPassthrough = append(resTLSPassthrough, model.TLSPassthroughListener{
-					Name:           string(l.Name),
-					Sources:        []model.FullyQualifiedResource{l.Source},
-					Port:           uint32(l.Port),
-					Hostname:       toHostname(l.Hostname),
-					Routes:         toTLSRoutes(l.Listener, listenerHostnamesByProtocol, l.FilterTLSRoutes(input.TLSRoutes), input.Services, input.ServiceImports, input.ReferenceGrants),
+					Name:     string(l.Name),
+					Sources:  []model.FullyQualifiedResource{l.Source},
+					Port:     uint32(l.Port),
+					Hostname: toHostname(l.Hostname),
+					Routes: toTLSRoutes(l.Listener, listenerHostnamesByProtocol, l.FilterTLSRoutes(input.TLSRoutes),
+						input.Services, input.ServiceImports, input.ReferenceGrants),
 					Infrastructure: infra,
 					Service:        toServiceModel(input.GatewayClassConfig),
 				})
@@ -250,22 +253,24 @@ func GatewayAPI(log *slog.Logger, input Input) *model.Model {
 
 		case gatewayv1.TCPProtocolType:
 			resL4 = append(resL4, model.L4Listener{
-				Name:           string(l.Name),
-				Sources:        []model.FullyQualifiedResource{l.Source},
-				Port:           uint32(l.Port),
-				Protocol:       model.L4ProtocolTCP,
-				Routes:         toTCPRoutes(l.Listener, l.FilterTCPRoutes(input.TCPRoutes), input.Services, input.ServiceImports, input.ReferenceGrants),
+				Name:     string(l.Name),
+				Sources:  []model.FullyQualifiedResource{l.Source},
+				Port:     uint32(l.Port),
+				Protocol: model.L4ProtocolTCP,
+				Routes: toTCPRoutes(l.Listener, l.FilterTCPRoutes(input.TCPRoutes), input.Services,
+					input.ServiceImports, input.ReferenceGrants),
 				Infrastructure: infra,
 				Service:        toServiceModel(input.GatewayClassConfig),
 			})
 
 		case gatewayv1.UDPProtocolType:
 			resL4 = append(resL4, model.L4Listener{
-				Name:           string(l.Name),
-				Sources:        []model.FullyQualifiedResource{l.Source},
-				Port:           uint32(l.Port),
-				Protocol:       model.L4ProtocolUDP,
-				Routes:         toUDPRoutes(l.Listener, l.FilterUDPRoutes(input.UDPRoutes), input.Services, input.ServiceImports, input.ReferenceGrants),
+				Name:     string(l.Name),
+				Sources:  []model.FullyQualifiedResource{l.Source},
+				Port:     uint32(l.Port),
+				Protocol: model.L4ProtocolUDP,
+				Routes: toUDPRoutes(l.Listener, l.FilterUDPRoutes(input.UDPRoutes), input.Services,
+					input.ServiceImports, input.ReferenceGrants),
 				Infrastructure: infra,
 				Service:        toServiceModel(input.GatewayClassConfig),
 			})
@@ -864,7 +869,11 @@ func extractGRPCRoutes(hostnames []string, grpcr gatewayv1.GRPCRoute, services [
 	return grpcRoutes
 }
 
-func toTLSRoutes(listener gatewayv1beta1.Listener, listenerHostnamesByProtocol map[gatewayv1.ProtocolType][]string, input []gatewayv1.TLSRoute, services []corev1.Service, serviceImports []mcsapiv1beta1.ServiceImport, grants []gatewayv1.ReferenceGrant) []model.TLSPassthroughRoute {
+func toTLSRoutes(
+	listener gatewayv1beta1.Listener, listenerHostnamesByProtocol map[gatewayv1.ProtocolType][]string,
+	input []gatewayv1.TLSRoute, services []corev1.Service, serviceImports []mcsapiv1beta1.ServiceImport,
+	grants []gatewayv1.ReferenceGrant,
+) []model.TLSPassthroughRoute {
 	var tlsRoutes []model.TLSPassthroughRoute
 	for _, r := range input {
 		isListener := false

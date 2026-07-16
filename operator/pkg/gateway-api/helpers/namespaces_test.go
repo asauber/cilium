@@ -242,8 +242,11 @@ func TestAllowedRouteNamespaces(t *testing.T) {
 		{"From None returns empty set", withNamespaces(&none, nil), map[string]struct{}{}},
 		{"From All returns nil", withNamespaces(&all, nil), nil},
 		{"From Same returns own namespace", withNamespaces(&same, nil), map[string]struct{}{"own": {}}},
-		{"From Selector returns matching namespaces", withNamespaces(&selector, prodSelector), map[string]struct{}{"prod": {}}},
-		{"From Selector no match returns empty set", withNamespaces(&selector, &metav1.LabelSelector{MatchLabels: map[string]string{"env": "staging"}}), map[string]struct{}{}},
+		{"From Selector returns matching namespaces", withNamespaces(&selector, prodSelector),
+			map[string]struct{}{"prod": {}}},
+		{"From Selector no match returns empty set",
+			withNamespaces(&selector, &metav1.LabelSelector{MatchLabels: map[string]string{"env": "staging"}}),
+			map[string]struct{}{}},
 		{"nil From with selector uses selector", withNamespaces(nil, prodSelector), map[string]struct{}{"prod": {}}},
 	}
 

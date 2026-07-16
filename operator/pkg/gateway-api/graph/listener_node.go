@@ -44,10 +44,7 @@ func (node *ListenerNode) AddRoutes(
 	}
 }
 
-func (node *ListenerNode) ParentRefsTarget(
-	parentRefs []gatewayv1.ParentReference,
-	routeNamespace string,
-) bool {
+func (node *ListenerNode) ParentRefsTarget(parentRefs []gatewayv1.ParentReference, routeNamespace string) bool {
 	for _, ref := range parentRefs {
 		refKind := "Gateway"
 		if ref.Kind != nil {

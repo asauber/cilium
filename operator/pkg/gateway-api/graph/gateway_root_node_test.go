@@ -159,9 +159,7 @@ func TestGatewayRootNodeSetListenerSetStatusesClearsZeroCount(t *testing.T) {
 }
 
 func conditionReason(
-	t *testing.T,
-	conditions []metav1.Condition,
-	conditionType gatewayv1.ListenerSetConditionType,
+	t *testing.T, conditions []metav1.Condition, conditionType gatewayv1.ListenerSetConditionType,
 ) gatewayv1.ListenerSetConditionReason {
 	t.Helper()
 	for _, condition := range conditions {

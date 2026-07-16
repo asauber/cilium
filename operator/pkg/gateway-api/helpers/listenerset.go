@@ -22,8 +22,7 @@ func ListenerEntryToListener(entry gatewayv1.ListenerEntry) gatewayv1.Listener {
 }
 
 func ResolveListenerSetToGateway(
-	ctx context.Context, c client.Client,
-	lsName string, lsNamespace string,
+	ctx context.Context, c client.Client, lsName, lsNamespace string,
 ) *types.NamespacedName {
 	ls := &gatewayv1.ListenerSet{}
 	nn := types.NamespacedName{Namespace: lsNamespace, Name: lsName}

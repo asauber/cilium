@@ -315,9 +315,7 @@ func validateTLS(
 }
 
 func isSecretReferenceAllowed(
-	originatingNamespace string,
-	sr gatewayv1.SecretObjectReference,
-	gvk schema.GroupVersionKind,
+	originatingNamespace string, sr gatewayv1.SecretObjectReference, gvk schema.GroupVersionKind,
 	grants []gatewayv1.ReferenceGrant,
 ) bool {
 	return helpers.IsSecretReferenceAllowed(originatingNamespace, sr, gvk, grants)
@@ -326,10 +324,7 @@ func isSecretReferenceAllowed(
 // Condition constructors
 
 func listenerAcceptedCond(
-	generation int64,
-	accepted bool,
-	reason gatewayv1.ListenerConditionReason,
-	msg string,
+	generation int64, accepted bool, reason gatewayv1.ListenerConditionReason, msg string,
 ) metav1.Condition {
 	status := metav1.ConditionTrue
 	if !accepted {
@@ -346,10 +341,7 @@ func listenerAcceptedCond(
 }
 
 func listenerProgrammedCond(
-	generation int64,
-	programmed bool,
-	reason gatewayv1.ListenerConditionReason,
-	msg string,
+	generation int64, programmed bool, reason gatewayv1.ListenerConditionReason, msg string,
 ) metav1.Condition {
 	status := metav1.ConditionTrue
 	if !programmed {
@@ -365,11 +357,7 @@ func listenerProgrammedCond(
 	}
 }
 
-func listenerConflictedCond(
-	generation int64,
-	reason gatewayv1.ListenerConditionReason,
-	msg string,
-) metav1.Condition {
+func listenerConflictedCond(generation int64, reason gatewayv1.ListenerConditionReason, msg string) metav1.Condition {
 	return metav1.Condition{
 		Type:               string(gatewayv1.ListenerConditionConflicted),
 		Status:             metav1.ConditionTrue,
@@ -380,10 +368,7 @@ func listenerConflictedCond(
 	}
 }
 
-func listenerInvalidRouteKindsCond(
-	generation int64,
-	msg string,
-) metav1.Condition {
+func listenerInvalidRouteKindsCond(generation int64, msg string) metav1.Condition {
 	return metav1.Condition{
 		Type:               string(gatewayv1.ListenerConditionResolvedRefs),
 		Status:             metav1.ConditionFalse,
@@ -401,9 +386,7 @@ type listenerConflict struct {
 	message string
 }
 
-func conflictedListeners(
-	listeners []*ListenerNode,
-) map[gatewayv1.SectionName]listenerConflict {
+func conflictedListeners(listeners []*ListenerNode) map[gatewayv1.SectionName]listenerConflict {
 	conflicts := map[gatewayv1.SectionName]listenerConflict{}
 
 	for i := range listeners {
@@ -428,9 +411,7 @@ func conflictedListeners(
 	return conflicts
 }
 
-func listenerPairConflict(
-	first, second *gatewayv1.Listener,
-) (gatewayv1.ListenerConditionReason, bool) {
+func listenerPairConflict(first, second *gatewayv1.Listener) (gatewayv1.ListenerConditionReason, bool) {
 	if first.Port != second.Port {
 		return "", false
 	}
@@ -467,9 +448,7 @@ func isL4Protocol(p gatewayv1.ProtocolType) bool {
 	return p == gatewayv1.TCPProtocolType || p == gatewayv1.UDPProtocolType
 }
 
-func isHTTPSAndTLSPassthroughPair(
-	first, second *gatewayv1.Listener,
-) bool {
+func isHTTPSAndTLSPassthroughPair(first, second *gatewayv1.Listener) bool {
 	return (helpers.IsHTTPSTerminatedListener(first) && helpers.IsTLSPassthroughListener(second)) ||
 		(helpers.IsHTTPSTerminatedListener(second) && helpers.IsTLSPassthroughListener(first))
 }
@@ -481,10 +460,7 @@ func normalizedListenerHostname(l *gatewayv1.Listener) string {
 	return "*"
 }
 
-func listenerConflictMessage(
-	reason gatewayv1.ListenerConditionReason,
-	self, other *gatewayv1.Listener,
-) string {
+func listenerConflictMessage(reason gatewayv1.ListenerConditionReason, self, other *gatewayv1.Listener) string {
 	switch {
 	case reason == gatewayv1.ListenerReasonHostnameConflict:
 		return fmt.Sprintf(
@@ -507,9 +483,7 @@ type acceptedListeners struct {
 	listeners []gatewayv1.Listener
 }
 
-func (a *acceptedListeners) checkConflicts(
-	l gatewayv1.Listener,
-) map[gatewayv1.SectionName]listenerConflict {
+func (a *acceptedListeners) checkConflicts(l gatewayv1.Listener) map[gatewayv1.SectionName]listenerConflict {
 	for i := range a.listeners {
 		reason, ok := listenerPairConflict(&a.listeners[i], &l)
 		if !ok {
@@ -531,9 +505,7 @@ func (a *acceptedListeners) accept(l gatewayv1.Listener) {
 
 // Protocol to supported kinds mapping
 
-func getSupportedRouteKinds(
-	protocol gatewayv1.ProtocolType,
-) []gatewayv1.RouteGroupKind {
+func getSupportedRouteKinds(protocol gatewayv1.ProtocolType) []gatewayv1.RouteGroupKind {
 	switch protocol {
 	case gatewayv1.HTTPProtocolType, gatewayv1.HTTPSProtocolType:
 		return []gatewayv1.RouteGroupKind{
@@ -577,10 +549,7 @@ func groupPtr(name string) *gatewayv1.Group {
 	return &g
 }
 
-func groupDerefOr(
-	group *gatewayv1.Group,
-	defaultGroup string,
-) string {
+func groupDerefOr(group *gatewayv1.Group, defaultGroup string) string {
 	if group != nil && *group != "" {
 		return string(*group)
 	}

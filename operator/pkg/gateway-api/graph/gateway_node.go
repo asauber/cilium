@@ -30,11 +30,7 @@ func (node *GatewayNode) Validate() error {
 	return nil
 }
 
-func (node *GatewayNode) SetAccepted(
-	accepted bool,
-	message string,
-	reason gatewayv1.GatewayConditionReason,
-) {
+func (node *GatewayNode) SetAccepted(accepted bool, message string, reason gatewayv1.GatewayConditionReason) {
 	status := metav1.ConditionFalse
 	if accepted {
 		status = metav1.ConditionTrue
@@ -50,9 +46,7 @@ func (node *GatewayNode) SetAccepted(
 }
 
 func (node *GatewayNode) SetProgrammed(
-	status metav1.ConditionStatus,
-	message string,
-	reason gatewayv1.GatewayConditionReason,
+	status metav1.ConditionStatus, message string, reason gatewayv1.GatewayConditionReason,
 ) {
 	node.setCondition(metav1.Condition{
 		Type:               string(gatewayv1.GatewayConditionProgrammed),

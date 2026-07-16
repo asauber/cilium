@@ -11,10 +11,7 @@ import (
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
 )
 
-func BuildRoot(
-	gateway *gatewayv1.Gateway,
-	gatewayClass *gatewayv1.GatewayClass,
-) *GatewayRootNode {
+func BuildRoot(gateway *gatewayv1.Gateway, gatewayClass *gatewayv1.GatewayClass) *GatewayRootNode {
 	root := &GatewayRootNode{
 		GatewayClass: &GatewayClassNode{
 			GatewayClass: gatewayClass,

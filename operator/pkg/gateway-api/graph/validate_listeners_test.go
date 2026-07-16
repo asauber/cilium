@@ -12,10 +12,7 @@ import (
 )
 
 func muxedListener(
-	name string,
-	protocol gatewayv1.ProtocolType,
-	port gatewayv1.PortNumber,
-	hostname string,
+	name string, protocol gatewayv1.ProtocolType, port gatewayv1.PortNumber, hostname string,
 ) *gatewayv1.Listener {
 	l := &gatewayv1.Listener{
 		Name:     gatewayv1.SectionName(name),
@@ -33,11 +30,7 @@ func muxedListener(
 	return l
 }
 
-func tlsPassthroughListener(
-	name string,
-	port gatewayv1.PortNumber,
-	hostname string,
-) *gatewayv1.Listener {
+func tlsPassthroughListener(name string, port gatewayv1.PortNumber, hostname string) *gatewayv1.Listener {
 	l := muxedListener(name, gatewayv1.TLSProtocolType, port, hostname)
 	l.TLS = &gatewayv1.ListenerTLSConfig{
 		Mode: ptr.To(gatewayv1.TLSModePassthrough),
@@ -45,11 +38,7 @@ func tlsPassthroughListener(
 	return l
 }
 
-func l4Listener(
-	name string,
-	protocol gatewayv1.ProtocolType,
-	port gatewayv1.PortNumber,
-) *gatewayv1.Listener {
+func l4Listener(name string, protocol gatewayv1.ProtocolType, port gatewayv1.PortNumber) *gatewayv1.Listener {
 	return &gatewayv1.Listener{
 		Name:     gatewayv1.SectionName(name),
 		Protocol: protocol,

@@ -28,8 +28,7 @@ func (root *GatewayRootNode) BuildMergedListeners() []ingestion.ListenerWithCont
 }
 
 func appendValidListeners(
-	merged []ingestion.ListenerWithContext,
-	listeners []*ListenerNode,
+	merged []ingestion.ListenerWithContext, listeners []*ListenerNode,
 ) []ingestion.ListenerWithContext {
 	for _, listener := range listeners {
 		if !listener.Valid {

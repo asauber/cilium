@@ -116,7 +116,8 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	var allAttachedListenerSets []gatewayv1.ListenerSet
 	if helpers.HasListenerSetSupport(r.Client.Scheme()) {
 		if err := r.Client.List(ctx, listenerSetList, &client.ListOptions{
-			FieldSelector: fields.OneTermEqualSelector(indexers.ListenerSetGatewayIndex, client.ObjectKeyFromObject(gw).String()),
+			FieldSelector: fields.OneTermEqualSelector(
+				indexers.ListenerSetGatewayIndex, client.ObjectKeyFromObject(gw).String()),
 		}); err != nil {
 			scopedLog.ErrorContext(ctx, "Unable to list ListenerSets", logfields.Error, err)
 			return r.handleReconcileErrorWithStatus(ctx, err, original, gw)
@@ -287,8 +288,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			" At a future date this annotation will be removed if no spec.addresses are set.", gw.GetNamespace(), gw.GetName(), annotation.LBIPAMIPKeyAlias))
 	}
 
-	tlsSecrets := helpers.ValidateTLSSecrets(
-		ctx, r.Client, helpers.TLSSecretReferences(gw, allAttachedListenerSets))
+	tlsSecrets := helpers.ValidateTLSSecrets(ctx, r.Client, helpers.TLSSecretReferences(gw, allAttachedListenerSets))
 
 	graphRoot.AddRoutes(
 		httpRouteList,
@@ -760,7 +760,9 @@ func notAllowedListenerSets(graphRoot *graph.GatewayRootNode) map[types.Namespac
 // checkableParentRefs returns the parentRefs eligible for acceptance checks,
 // dropping any that name a ListenerSet the graph rejected via allowedListeners.
 // A Route is therefore never accepted through a NotAllowed ListenerSet.
-func checkableParentRefs(refs []gatewayv1.ParentReference, routeNamespace string, notAllowed map[types.NamespacedName]struct{}) []gatewayv1.ParentReference {
+func checkableParentRefs(
+	refs []gatewayv1.ParentReference, routeNamespace string, notAllowed map[types.NamespacedName]struct{},
+) []gatewayv1.ParentReference {
 	if len(notAllowed) == 0 {
 		return refs
 	}
@@ -1086,10 +1088,7 @@ func (r *gatewayReconciler) verifyGatewayStaticAddresses(gw *gatewayv1.Gateway) 
 	return nil
 }
 
-func (r *gatewayReconciler) setListenerSetStatuses(
-	ctx context.Context,
-	graphRoot *graph.GatewayRootNode,
-) {
+func (r *gatewayReconciler) setListenerSetStatuses(ctx context.Context, graphRoot *graph.GatewayRootNode) {
 	originalListenerSets := make(map[*graph.ListenerSetNode]*gatewayv1.ListenerSet)
 	for _, listenerSetNode := range graphRoot.GatewayClass.Gateway.ListenerSets {
 		listenerSet := listenerSetNode.ListenerSet
@@ -1226,7 +1225,10 @@ func (r *gatewayReconciler) parentIsMatchingGateway(ctx context.Context, parent 
 	return hasMatchingControllerFn(gw)
 }
 
-func (r *gatewayReconciler) setHTTPRouteStatuses(scopedLog *slog.Logger, ctx context.Context, httpRoutes *gatewayv1.HTTPRouteList, grants *gatewayv1.ReferenceGrantList, notAllowed map[types.NamespacedName]struct{}) error {
+func (r *gatewayReconciler) setHTTPRouteStatuses(
+	scopedLog *slog.Logger, ctx context.Context, httpRoutes *gatewayv1.HTTPRouteList,
+	grants *gatewayv1.ReferenceGrantList, notAllowed map[types.NamespacedName]struct{},
+) error {
 	scopedLog.DebugContext(ctx, "Updating HTTPRoute statuses for Gateway", numRoutes, len(httpRoutes.Items))
 	for httpRouteIndex, original := range httpRoutes.Items {
 
@@ -1244,7 +1246,8 @@ func (r *gatewayReconciler) setHTTPRouteStatuses(scopedLog *slog.Logger, ctx con
 			ControllerName: r.controllerName,
 		}
 
-		if err := r.runCommonRouteChecks(ctx, i, checkableParentRefs(hr.Spec.ParentRefs, hr.Namespace, notAllowed), hr.Namespace); err != nil {
+		if err := r.runCommonRouteChecks(
+			ctx, i, checkableParentRefs(hr.Spec.ParentRefs, hr.Namespace, notAllowed), hr.Namespace); err != nil {
 			return r.handleHTTPRouteReconcileErrorWithStatus(ctx, scopedLog, err, &original, hr)
 		}
 
@@ -1273,7 +1276,10 @@ func (r *gatewayReconciler) setHTTPRouteStatuses(scopedLog *slog.Logger, ctx con
 	return nil
 }
 
-func (r *gatewayReconciler) setTLSRouteStatuses(scopedLog *slog.Logger, ctx context.Context, tlsRoutes *gatewayv1.TLSRouteList, grants *gatewayv1.ReferenceGrantList, notAllowed map[types.NamespacedName]struct{}) error {
+func (r *gatewayReconciler) setTLSRouteStatuses(
+	scopedLog *slog.Logger, ctx context.Context, tlsRoutes *gatewayv1.TLSRouteList,
+	grants *gatewayv1.ReferenceGrantList, notAllowed map[types.NamespacedName]struct{},
+) error {
 	scopedLog.Debug("Updating TLSRoute statuses for Gateway", numRoutes, len(tlsRoutes.Items))
 	for tlsRouteIndex, original := range tlsRoutes.Items {
 
@@ -1291,7 +1297,8 @@ func (r *gatewayReconciler) setTLSRouteStatuses(scopedLog *slog.Logger, ctx cont
 			ControllerName: r.controllerName,
 		}
 
-		if err := r.runCommonRouteChecks(ctx, i, checkableParentRefs(tlsr.Spec.ParentRefs, tlsr.Namespace, notAllowed), tlsr.Namespace); err != nil {
+		if err := r.runCommonRouteChecks(
+			ctx, i, checkableParentRefs(tlsr.Spec.ParentRefs, tlsr.Namespace, notAllowed), tlsr.Namespace); err != nil {
 			return r.handleTLSRouteReconcileErrorWithStatus(ctx, scopedLog, err, tlsr, &original)
 		}
 
@@ -1309,7 +1316,10 @@ func (r *gatewayReconciler) setTLSRouteStatuses(scopedLog *slog.Logger, ctx cont
 	return nil
 }
 
-func (r *gatewayReconciler) setGRPCRouteStatuses(scopedLog *slog.Logger, ctx context.Context, grpcRoutes *gatewayv1.GRPCRouteList, grants *gatewayv1.ReferenceGrantList, notAllowed map[types.NamespacedName]struct{}) error {
+func (r *gatewayReconciler) setGRPCRouteStatuses(
+	scopedLog *slog.Logger, ctx context.Context, grpcRoutes *gatewayv1.GRPCRouteList,
+	grants *gatewayv1.ReferenceGrantList, notAllowed map[types.NamespacedName]struct{},
+) error {
 	scopedLog.Debug("Updating GRPCRoute statuses for Gateway", numRoutes, len(grpcRoutes.Items))
 	for grpcRouteIndex, original := range grpcRoutes.Items {
 
@@ -1327,7 +1337,8 @@ func (r *gatewayReconciler) setGRPCRouteStatuses(scopedLog *slog.Logger, ctx con
 			ControllerName: r.controllerName,
 		}
 
-		if err := r.runCommonRouteChecks(ctx, i, checkableParentRefs(grpcr.Spec.ParentRefs, grpcr.Namespace, notAllowed), grpcr.Namespace); err != nil {
+		if err := r.runCommonRouteChecks(
+			ctx, i, checkableParentRefs(grpcr.Spec.ParentRefs, grpcr.Namespace, notAllowed), grpcr.Namespace); err != nil {
 			return r.handleGRPCRouteReconcileErrorWithStatus(ctx, scopedLog, err, grpcr, &original)
 		}
 
@@ -1620,7 +1631,10 @@ func (r *gatewayReconciler) setBackendTLSPolicyStatuses(scopedLog *slog.Logger,
 	return nil
 }
 
-func (r *gatewayReconciler) setTCPRouteStatuses(scopedLog *slog.Logger, ctx context.Context, tcpRoutes *gatewayv1.TCPRouteList, grants *gatewayv1.ReferenceGrantList, notAllowed map[types.NamespacedName]struct{}) error {
+func (r *gatewayReconciler) setTCPRouteStatuses(
+	scopedLog *slog.Logger, ctx context.Context, tcpRoutes *gatewayv1.TCPRouteList,
+	grants *gatewayv1.ReferenceGrantList, notAllowed map[types.NamespacedName]struct{},
+) error {
 	scopedLog.Debug("Updating TCPRoute statuses for Gateway", numRoutes, len(tcpRoutes.Items))
 	for tcpRouteIndex, original := range tcpRoutes.Items {
 
@@ -1635,7 +1649,8 @@ func (r *gatewayReconciler) setTCPRouteStatuses(scopedLog *slog.Logger, ctx cont
 			ControllerName: r.controllerName,
 		}
 
-		if err := r.runCommonRouteChecks(ctx, i, checkableParentRefs(tcpr.Spec.ParentRefs, tcpr.Namespace, notAllowed), tcpr.Namespace); err != nil {
+		if err := r.runCommonRouteChecks(
+			ctx, i, checkableParentRefs(tcpr.Spec.ParentRefs, tcpr.Namespace, notAllowed), tcpr.Namespace); err != nil {
 			return r.handleTCPRouteReconcileErrorWithStatus(ctx, scopedLog, err, &original, tcpr)
 		}
 
@@ -1651,7 +1666,10 @@ func (r *gatewayReconciler) setTCPRouteStatuses(scopedLog *slog.Logger, ctx cont
 	return nil
 }
 
-func (r *gatewayReconciler) setUDPRouteStatuses(scopedLog *slog.Logger, ctx context.Context, udpRoutes *gatewayv1.UDPRouteList, grants *gatewayv1.ReferenceGrantList, notAllowed map[types.NamespacedName]struct{}) error {
+func (r *gatewayReconciler) setUDPRouteStatuses(
+	scopedLog *slog.Logger, ctx context.Context, udpRoutes *gatewayv1.UDPRouteList,
+	grants *gatewayv1.ReferenceGrantList, notAllowed map[types.NamespacedName]struct{},
+) error {
 	scopedLog.Debug("Updating UDPRoute statuses for Gateway", numRoutes, len(udpRoutes.Items))
 	for udpRouteIndex, original := range udpRoutes.Items {
 
@@ -1666,7 +1684,8 @@ func (r *gatewayReconciler) setUDPRouteStatuses(scopedLog *slog.Logger, ctx cont
 			ControllerName: r.controllerName,
 		}
 
-		if err := r.runCommonRouteChecks(ctx, i, checkableParentRefs(udpr.Spec.ParentRefs, udpr.Namespace, notAllowed), udpr.Namespace); err != nil {
+		if err := r.runCommonRouteChecks(
+			ctx, i, checkableParentRefs(udpr.Spec.ParentRefs, udpr.Namespace, notAllowed), udpr.Namespace); err != nil {
 			return r.handleUDPRouteReconcileErrorWithStatus(ctx, scopedLog, err, &original, udpr)
 		}
 

@@ -88,10 +88,7 @@ func (root *GatewayRootNode) SetListenerSetStatuses() {
 }
 
 func setListenerSetAccepted(
-	listenerSet *gatewayv1.ListenerSet,
-	accepted bool,
-	message string,
-	reason gatewayv1.ListenerSetConditionReason,
+	listenerSet *gatewayv1.ListenerSet, accepted bool, message string, reason gatewayv1.ListenerSetConditionReason,
 ) {
 	status := metav1.ConditionTrue
 	if !accepted {
@@ -108,10 +105,7 @@ func setListenerSetAccepted(
 }
 
 func setListenerSetProgrammed(
-	listenerSet *gatewayv1.ListenerSet,
-	programmed bool,
-	message string,
-	reason gatewayv1.ListenerSetConditionReason,
+	listenerSet *gatewayv1.ListenerSet, programmed bool, message string, reason gatewayv1.ListenerSetConditionReason,
 ) {
 	status := metav1.ConditionTrue
 	if !programmed {

@@ -20,18 +20,14 @@ type TLSSecretValidation struct {
 	Error  error
 }
 
-func TLSSecretReferences(
-	gateway *gatewayv1.Gateway,
-	listenerSets []gatewayv1.ListenerSet,
-) []types.NamespacedName {
+func TLSSecretReferences(gateway *gatewayv1.Gateway, listenerSets []gatewayv1.ListenerSet) []types.NamespacedName {
 	seen := make(map[types.NamespacedName]struct{})
 	for _, listener := range gateway.Spec.Listeners {
 		addListenerTLSSecretReferences(seen, gateway.GetNamespace(), listener)
 	}
 	for _, listenerSet := range listenerSets {
 		for _, entry := range listenerSet.Spec.Listeners {
-			addListenerTLSSecretReferences(
-				seen, listenerSet.GetNamespace(), ListenerEntryToListener(entry))
+			addListenerTLSSecretReferences(seen, listenerSet.GetNamespace(), ListenerEntryToListener(entry))
 		}
 	}
 
@@ -43,9 +39,7 @@ func TLSSecretReferences(
 }
 
 func ValidateTLSSecrets(
-	ctx context.Context,
-	c client.Client,
-	references []types.NamespacedName,
+	ctx context.Context, c client.Client, references []types.NamespacedName,
 ) map[types.NamespacedName]TLSSecretValidation {
 	validations := make(map[types.NamespacedName]TLSSecretValidation, len(references))
 	for _, reference := range references {
@@ -83,9 +77,7 @@ func ValidateTLSSecrets(
 }
 
 func addListenerTLSSecretReferences(
-	seen map[types.NamespacedName]struct{},
-	ownerNamespace string,
-	listener gatewayv1.Listener,
+	seen map[types.NamespacedName]struct{}, ownerNamespace string, listener gatewayv1.Listener,
 ) {
 	if listener.TLS == nil {
 		return
