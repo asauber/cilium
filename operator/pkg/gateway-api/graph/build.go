@@ -91,9 +91,11 @@ func Build(input BuildInput) *GatewayRootNode {
 	}
 
 	return &GatewayRootNode{
-		GatewayClass:       input.GatewayClass,
-		GatewayClassConfig: input.GatewayClassConfig,
-		Gateway:            gwNode,
+		GatewayClass: &GatewayClassNode{
+			GatewayClass:       input.GatewayClass,
+			GatewayClassConfig: input.GatewayClassConfig,
+			Gateway:            gwNode,
+		},
 	}
 }
 

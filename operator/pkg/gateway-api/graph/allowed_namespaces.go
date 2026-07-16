@@ -18,7 +18,7 @@ import (
 // empty set means none are (From: None). The resolution is shared with
 // ingestion via helpers.AllowedRouteNamespaces.
 func ResolveAllowedRouteNamespaces(root *GatewayRootNode) {
-	gw := root.Gateway
+	gw := root.GatewayClass.Gateway
 	for _, ln := range gw.Listeners {
 		ln.AllowedRouteNamespaces = helpers.AllowedRouteNamespaces(
 			ln.Listener, ln.Source.Namespace, gw.Namespaces)

@@ -45,12 +45,12 @@ func TestBuildBasicGateway(t *testing.T) {
 
 	require.NotNil(t, root)
 	assert.Equal(t, "cilium", root.GatewayClass.GetName())
-	require.NotNil(t, root.Gateway)
-	assert.Len(t, root.Gateway.Listeners, 2)
-	assert.Equal(t, gatewayv1.SectionName("http"), root.Gateway.Listeners[0].Listener.Name)
-	assert.Equal(t, gatewayv1.SectionName("https"), root.Gateway.Listeners[1].Listener.Name)
-	assert.Equal(t, "Gateway", root.Gateway.Listeners[0].Source.Kind)
-	assert.True(t, root.Gateway.Listeners[0].Valid)
+	require.NotNil(t, root.GatewayClass.Gateway)
+	assert.Len(t, root.GatewayClass.Gateway.Listeners, 2)
+	assert.Equal(t, gatewayv1.SectionName("http"), root.GatewayClass.Gateway.Listeners[0].Listener.Name)
+	assert.Equal(t, gatewayv1.SectionName("https"), root.GatewayClass.Gateway.Listeners[1].Listener.Name)
+	assert.Equal(t, "Gateway", root.GatewayClass.Gateway.Listeners[0].Source.Kind)
+	assert.True(t, root.GatewayClass.Gateway.Listeners[0].Valid)
 }
 
 func TestBuildRoutesAttachToListeners(t *testing.T) {
@@ -132,8 +132,8 @@ func TestBuildRoutesAttachToListeners(t *testing.T) {
 
 	root := Build(input)
 
-	httpListener := root.Gateway.Listeners[0]
-	tcpListener := root.Gateway.Listeners[1]
+	httpListener := root.GatewayClass.Gateway.Listeners[0]
+	tcpListener := root.GatewayClass.Gateway.Listeners[1]
 
 	assert.Len(t, httpListener.HTTPRoutes, 2, "both routes attach to http listener")
 	assert.Len(t, httpListener.TCPRoutes, 0)
@@ -204,12 +204,12 @@ func TestBuildWithListenerSets(t *testing.T) {
 
 	root := Build(input)
 
-	assert.Len(t, root.Gateway.Listeners, 1)
-	assert.Len(t, root.Gateway.Listeners[0].HTTPRoutes, 0)
-	require.Len(t, root.Gateway.ListenerSets, 1)
-	require.Len(t, root.Gateway.ListenerSets[0].Listeners, 1)
+	assert.Len(t, root.GatewayClass.Gateway.Listeners, 1)
+	assert.Len(t, root.GatewayClass.Gateway.Listeners[0].HTTPRoutes, 0)
+	require.Len(t, root.GatewayClass.Gateway.ListenerSets, 1)
+	require.Len(t, root.GatewayClass.Gateway.ListenerSets[0].Listeners, 1)
 
-	lsListener := root.Gateway.ListenerSets[0].Listeners[0]
+	lsListener := root.GatewayClass.Gateway.ListenerSets[0].Listeners[0]
 	assert.Equal(t, gatewayv1.SectionName("extra"), lsListener.Listener.Name)
 	assert.Equal(t, "ListenerSet", lsListener.Source.Kind)
 	assert.Len(t, lsListener.HTTPRoutes, 1)
@@ -257,7 +257,7 @@ func TestBuildCrossNamespaceRoute(t *testing.T) {
 	}
 
 	root := Build(input)
-	assert.Len(t, root.Gateway.Listeners[0].HTTPRoutes, 1)
+	assert.Len(t, root.GatewayClass.Gateway.Listeners[0].HTTPRoutes, 1)
 }
 
 func TestBuildRouteNoMatch(t *testing.T) {
@@ -299,7 +299,7 @@ func TestBuildRouteNoMatch(t *testing.T) {
 	}
 
 	root := Build(input)
-	assert.Len(t, root.Gateway.Listeners[0].HTTPRoutes, 0)
+	assert.Len(t, root.GatewayClass.Gateway.Listeners[0].HTTPRoutes, 0)
 }
 
 func TestDebugLogDoesNotPanic(t *testing.T) {
@@ -355,7 +355,7 @@ func TestBuildNilKindDefaultsToGateway(t *testing.T) {
 	}
 
 	root := Build(input)
-	assert.Len(t, root.Gateway.Listeners[0].HTTPRoutes, 1)
+	assert.Len(t, root.GatewayClass.Gateway.Listeners[0].HTTPRoutes, 1)
 }
 
 func TestBuildNilKindDoesNotMatchListenerSet(t *testing.T) {
@@ -403,7 +403,7 @@ func TestBuildNilKindDoesNotMatchListenerSet(t *testing.T) {
 	}
 
 	root := Build(input)
-	assert.Len(t, root.Gateway.ListenerSets[0].Listeners[0].HTTPRoutes, 0,
+	assert.Len(t, root.GatewayClass.Gateway.ListenerSets[0].Listeners[0].HTTPRoutes, 0,
 		"nil Kind defaults to Gateway, should not match ListenerSet")
 }
 
@@ -443,9 +443,9 @@ func TestBuildRouteMultipleParentRefsSameGateway(t *testing.T) {
 	}
 
 	root := Build(input)
-	assert.Len(t, root.Gateway.Listeners[0].HTTPRoutes, 1,
+	assert.Len(t, root.GatewayClass.Gateway.Listeners[0].HTTPRoutes, 1,
 		"route attaches to http listener via first parentRef")
-	assert.Len(t, root.Gateway.Listeners[1].HTTPRoutes, 1,
+	assert.Len(t, root.GatewayClass.Gateway.Listeners[1].HTTPRoutes, 1,
 		"route attaches to https listener via second parentRef")
 }
 
@@ -483,7 +483,7 @@ func TestBuildRouteWrongSectionName(t *testing.T) {
 	}
 
 	root := Build(input)
-	assert.Len(t, root.Gateway.Listeners[0].HTTPRoutes, 0)
+	assert.Len(t, root.GatewayClass.Gateway.Listeners[0].HTTPRoutes, 0)
 }
 
 func TestBuildRouteWrongNamespace(t *testing.T) {
@@ -521,7 +521,7 @@ func TestBuildRouteWrongNamespace(t *testing.T) {
 	}
 
 	root := Build(input)
-	assert.Len(t, root.Gateway.Listeners[0].HTTPRoutes, 0)
+	assert.Len(t, root.GatewayClass.Gateway.Listeners[0].HTTPRoutes, 0)
 }
 
 func TestBuildEmptyParentRefs(t *testing.T) {
@@ -554,7 +554,7 @@ func TestBuildEmptyParentRefs(t *testing.T) {
 	}
 
 	root := Build(input)
-	assert.Len(t, root.Gateway.Listeners[0].HTTPRoutes, 0)
+	assert.Len(t, root.GatewayClass.Gateway.Listeners[0].HTTPRoutes, 0)
 }
 
 func TestBuildGatewayNoListeners(t *testing.T) {
@@ -573,8 +573,8 @@ func TestBuildGatewayNoListeners(t *testing.T) {
 	}
 
 	root := Build(input)
-	assert.Len(t, root.Gateway.Listeners, 0)
-	assert.Len(t, root.Gateway.ListenerSets, 0)
+	assert.Len(t, root.GatewayClass.Gateway.Listeners, 0)
+	assert.Len(t, root.GatewayClass.Gateway.ListenerSets, 0)
 }
 
 func TestBuildRouteBothGatewayAndListenerSet(t *testing.T) {
@@ -626,9 +626,9 @@ func TestBuildRouteBothGatewayAndListenerSet(t *testing.T) {
 	}
 
 	root := Build(input)
-	assert.Len(t, root.Gateway.Listeners[0].HTTPRoutes, 1,
+	assert.Len(t, root.GatewayClass.Gateway.Listeners[0].HTTPRoutes, 1,
 		"attaches to Gateway listener")
-	assert.Len(t, root.Gateway.ListenerSets[0].Listeners[0].HTTPRoutes, 1,
+	assert.Len(t, root.GatewayClass.Gateway.ListenerSets[0].Listeners[0].HTTPRoutes, 1,
 		"attaches to ListenerSet listener")
 }
 
@@ -681,9 +681,9 @@ func TestBuildListenerSetMultipleListenersSelectiveAttach(t *testing.T) {
 	}
 
 	root := Build(input)
-	require.Len(t, root.Gateway.ListenerSets[0].Listeners, 2)
-	assert.Len(t, root.Gateway.ListenerSets[0].Listeners[0].HTTPRoutes, 1)
-	assert.Len(t, root.Gateway.ListenerSets[0].Listeners[1].HTTPRoutes, 0)
+	require.Len(t, root.GatewayClass.Gateway.ListenerSets[0].Listeners, 2)
+	assert.Len(t, root.GatewayClass.Gateway.ListenerSets[0].Listeners[0].HTTPRoutes, 1)
+	assert.Len(t, root.GatewayClass.Gateway.ListenerSets[0].Listeners[1].HTTPRoutes, 0)
 }
 
 func TestBuildAllRouteTypes(t *testing.T) {
@@ -754,7 +754,7 @@ func TestBuildAllRouteTypes(t *testing.T) {
 	}
 
 	root := Build(input)
-	ln := root.Gateway.Listeners[0]
+	ln := root.GatewayClass.Gateway.Listeners[0]
 	assert.Len(t, ln.HTTPRoutes, 1)
 	assert.Len(t, ln.GRPCRoutes, 1)
 	assert.Len(t, ln.TLSRoutes, 1)
@@ -828,17 +828,17 @@ func TestBuildMultipleListenerSetsRouteIsolation(t *testing.T) {
 	}
 
 	root := Build(input)
-	require.Len(t, root.Gateway.ListenerSets, 2)
+	require.Len(t, root.GatewayClass.Gateway.ListenerSets, 2)
 
-	ls1Listener := root.Gateway.ListenerSets[0].Listeners[0]
-	ls2Listener := root.Gateway.ListenerSets[1].Listeners[0]
+	ls1Listener := root.GatewayClass.Gateway.ListenerSets[0].Listeners[0]
+	ls2Listener := root.GatewayClass.Gateway.ListenerSets[1].Listeners[0]
 
 	require.Len(t, ls1Listener.HTTPRoutes, 1)
 	assert.Equal(t, "route-ls1", ls1Listener.HTTPRoutes[0].Route.GetName())
 	require.Len(t, ls2Listener.HTTPRoutes, 1)
 	assert.Equal(t, "route-ls2", ls2Listener.HTTPRoutes[0].Route.GetName())
 
-	assert.Len(t, root.Gateway.Listeners[0].HTTPRoutes, 0,
+	assert.Len(t, root.GatewayClass.Gateway.Listeners[0].HTTPRoutes, 0,
 		"gateway listener gets no routes targeting ListenerSets")
 }
 
@@ -886,10 +886,10 @@ func TestBuildNamespaceDefaultsToRouteNamespace(t *testing.T) {
 	}
 
 	root := Build(input)
-	require.Len(t, root.Gateway.Listeners[0].HTTPRoutes, 1,
+	require.Len(t, root.GatewayClass.Gateway.Listeners[0].HTTPRoutes, 1,
 		"only same-ns route attaches when parentRef has no explicit namespace")
 	assert.Equal(t, "same-ns-route",
-		root.Gateway.Listeners[0].HTTPRoutes[0].Route.GetName())
+		root.GatewayClass.Gateway.Listeners[0].HTTPRoutes[0].Route.GetName())
 }
 
 func sectionName(name string) *gatewayv1.SectionName {

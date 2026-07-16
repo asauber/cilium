@@ -13,7 +13,7 @@ func DebugLog(log *slog.Logger, root *GatewayRootNode) {
 		return
 	}
 
-	gw := root.Gateway
+	gw := root.GatewayClass.Gateway
 
 	log.Debug(fmt.Sprintf("Graph: Gateway %s/%s",
 		gw.Gateway.GetNamespace(), gw.Gateway.GetName()))

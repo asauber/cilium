@@ -14,10 +14,13 @@ import (
 )
 
 type GatewayRootNode struct {
-	GatewayClass       gatewayv1.GatewayClass
-	GatewayClassConfig *v2alpha1.CiliumGatewayClassConfig
+	GatewayClass *GatewayClassNode
+}
 
-	Gateway *GatewayNode
+type GatewayClassNode struct {
+	gatewayv1.GatewayClass
+	GatewayClassConfig *v2alpha1.CiliumGatewayClassConfig
+	Gateway            *GatewayNode
 }
 
 type GatewayNode struct {

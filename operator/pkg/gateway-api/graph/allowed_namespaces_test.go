@@ -33,20 +33,22 @@ func Test_ResolveAllowedRouteNamespaces(t *testing.T) {
 		{ObjectMeta: metav1.ObjectMeta{Name: "prod", Labels: map[string]string{"env": "prod"}}},
 	}
 	root := &GatewayRootNode{
-		Gateway: &GatewayNode{
-			Namespaces: namespaces,
-			Listeners: []*ListenerNode{
-				{
-					Listener: listenerWithNamespaces(ptr.To(gatewayv1.NamespacesFromSame), nil),
-					Source:   model.FullyQualifiedResource{Kind: "Gateway", Namespace: "gw-ns"},
+		GatewayClass: &GatewayClassNode{
+			Gateway: &GatewayNode{
+				Namespaces: namespaces,
+				Listeners: []*ListenerNode{
+					{
+						Listener: listenerWithNamespaces(ptr.To(gatewayv1.NamespacesFromSame), nil),
+						Source:   model.FullyQualifiedResource{Kind: "Gateway", Namespace: "gw-ns"},
+					},
 				},
-			},
-			ListenerSets: []*ListenerSetNode{
-				{
-					Listeners: []*ListenerNode{
-						{
-							Listener: listenerWithNamespaces(ptr.To(gatewayv1.NamespacesFromSame), nil),
-							Source:   model.FullyQualifiedResource{Kind: "ListenerSet", Namespace: "ls-ns"},
+				ListenerSets: []*ListenerSetNode{
+					{
+						Listeners: []*ListenerNode{
+							{
+								Listener: listenerWithNamespaces(ptr.To(gatewayv1.NamespacesFromSame), nil),
+								Source:   model.FullyQualifiedResource{Kind: "ListenerSet", Namespace: "ls-ns"},
+							},
 						},
 					},
 				},
@@ -57,8 +59,9 @@ func Test_ResolveAllowedRouteNamespaces(t *testing.T) {
 	ResolveAllowedRouteNamespaces(root)
 
 	assert.Equal(t, map[string]struct{}{"gw-ns": {}},
-		root.Gateway.Listeners[0].AllowedRouteNamespaces,
+		root.GatewayClass.Gateway.Listeners[0].AllowedRouteNamespaces,
 		"Gateway listeners are now resolved uniformly")
 	assert.Equal(t, map[string]struct{}{"ls-ns": {}},
-		root.Gateway.ListenerSets[0].Listeners[0].AllowedRouteNamespaces)
+		root.GatewayClass.Gateway.ListenerSets[0].Listeners[0].AllowedRouteNamespaces,
+	)
 }

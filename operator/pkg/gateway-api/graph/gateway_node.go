@@ -4,11 +4,30 @@
 package graph
 
 import (
+	"errors"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
+
+func (node *GatewayNode) Validate() error {
+	if ref := node.Gateway.Spec.Infrastructure; ref != nil && ref.ParametersRef != nil {
+		node.SetAccepted(
+			false,
+			"Invalid Gateway parameters: spec.infrastructure.parametersRef is not supported",
+			gatewayv1.GatewayReasonInvalidParameters,
+		)
+		node.SetProgrammed(
+			metav1.ConditionUnknown,
+			"Waiting for Accepted condition to be True",
+			gatewayv1.GatewayReasonPending,
+		)
+		return errors.New("Invalid Gateway")
+	}
+
+	return nil
+}
 
 func (node *GatewayNode) SetAccepted(
 	accepted bool,
