@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -44,51 +45,6 @@ func (root *GatewayRootNode) DebugLog(ctx context.Context, log *slog.Logger) {
 	}
 }
 
-func (root *GatewayRootNode) BuildValidatedListeners() []ValidatedListener {
-	listeners := root.validListeners()
-	hostnamesByProtocol := listenerHostnamesByProtocol(listeners)
-	validated := make([]ValidatedListener, 0, len(listeners))
-	for _, listener := range listeners {
-		validated = append(validated, ValidatedListener{
-			Listener: listener.Listener, Source: listenerSource(listener),
-			HTTPRoutes: acceptedHTTPRoutes(listener, hostnamesByProtocol),
-			GRPCRoutes: acceptedGRPCRoutes(listener, hostnamesByProtocol),
-			TLSRoutes:  acceptedTLSRoutes(listener, hostnamesByProtocol),
-			TCPRoutes:  acceptedTCPRoutes(listener), UDPRoutes: acceptedUDPRoutes(listener),
-		})
-	}
-	return validated
-}
-
-func (root *GatewayRootNode) validListeners() []*ListenerNode {
-	listeners := root.allListeners()
-	valid := listeners[:0]
-	for _, listener := range listeners {
-		if listener.Valid {
-			valid = append(valid, listener)
-		}
-	}
-	return valid
-}
-
-func (root *GatewayRootNode) allListeners() []*ListenerNode {
-	gw := root.GatewayClass.Gateway
-	listeners := make([]*ListenerNode, 0, len(gw.Listeners))
-	listeners = append(listeners, gw.Listeners...)
-	for _, listenerSet := range gw.ListenerSets {
-		listeners = append(listeners, listenerSet.Listeners...)
-	}
-	return listeners
-}
-
-func (root *GatewayRootNode) AggregateAttachedRoutes() {
-	listeners := root.allListeners()
-	hostnamesByProtocol := listenerHostnamesByProtocol(listeners)
-	for _, listener := range listeners {
-		listener.AggregateAttachedRoutes(hostnamesByProtocol)
-	}
-}
-
 func (root *GatewayRootNode) ValidateListeners() {
 	gw := root.GatewayClass.Gateway
 	referenceGrants := referenceGrantValues(gw.ReferenceGrants)
@@ -120,88 +76,6 @@ func (root *GatewayRootNode) ValidateListeners() {
 				accepted = append(accepted, ln.Listener)
 			}
 		}
-	}
-}
-
-func (root *GatewayRootNode) ValidateAllowedListenerSets() {
-	gw := root.GatewayClass.Gateway
-	for _, lsn := range gw.ListenerSets {
-		lsn.Allowed = gatewayAllowsListenerSet(*gw.Gateway, *lsn.ListenerSet, gw.Namespaces)
-	}
-}
-
-func (root *GatewayRootNode) SetListenerSetStatuses() {
-	gw := root.GatewayClass.Gateway
-	gw.Gateway.Status.AttachedListenerSets = nil
-
-	var validAttachedCount int32
-	for _, listenerSetNode := range gw.ListenerSets {
-		listenerSet := listenerSetNode.ListenerSet
-		if !listenerSetNode.Allowed {
-			listenerSet.Status.Listeners = nil
-			setListenerSetAccepted(
-				listenerSet,
-				false,
-				"ListenerSet is not allowed by the Gateway's allowedListeners policy",
-				gatewayv1.ListenerSetReasonNotAllowed,
-			)
-			setListenerSetProgrammed(
-				listenerSet,
-				false,
-				"ListenerSet is not allowed by the Gateway's allowedListeners policy",
-				gatewayv1.ListenerSetReasonNotAllowed,
-			)
-			continue
-		}
-
-		oneValidListener := false
-		listenerStatuses := make([]gatewayv1.ListenerEntryStatus, 0, len(listenerSetNode.Listeners))
-		for _, listenerNode := range listenerSetNode.Listeners {
-			if listenerNode.Valid {
-				oneValidListener = true
-			}
-			listenerStatuses = append(listenerStatuses, gatewayv1.ListenerEntryStatus{
-				Name:           listenerNode.Listener.Name,
-				SupportedKinds: listenerNode.SupportedKinds,
-				Conditions:     listenerNode.Conditions,
-				AttachedRoutes: listenerNode.AttachedRoutes,
-			})
-		}
-		listenerSet.Status.Listeners = listenerStatuses
-
-		if oneValidListener {
-			validAttachedCount++
-			setListenerSetAccepted(
-				listenerSet,
-				true,
-				"ListenerSet is accepted",
-				gatewayv1.ListenerSetReasonAccepted,
-			)
-			setListenerSetProgrammed(
-				listenerSet,
-				true,
-				"ListenerSet is programmed",
-				gatewayv1.ListenerSetReasonProgrammed,
-			)
-			continue
-		}
-
-		setListenerSetAccepted(
-			listenerSet,
-			false,
-			"No valid listeners",
-			gatewayv1.ListenerSetReasonListenersNotValid,
-		)
-		setListenerSetProgrammed(
-			listenerSet,
-			false,
-			"No valid listeners",
-			gatewayv1.ListenerSetReasonListenersNotValid,
-		)
-	}
-
-	if validAttachedCount > 0 {
-		gw.Gateway.Status.AttachedListenerSets = &validAttachedCount
 	}
 }
 
@@ -261,20 +135,6 @@ func (root *GatewayRootNode) AddNamespaces(namespaces *corev1.NamespaceList) {
 	root.GatewayClass.Gateway.Namespaces = make([]*corev1.Namespace, len(namespaces.Items))
 	for index := range namespaces.Items {
 		root.GatewayClass.Gateway.Namespaces[index] = &namespaces.Items[index]
-	}
-}
-
-func (root *GatewayRootNode) PopulateAllowedRouteNamespaces() {
-	gateway := root.GatewayClass.Gateway
-	for _, listener := range gateway.Listeners {
-		listener.AllowedRouteNamespaces = helpers.AllowedRouteNamespaces(
-			listener.Listener, listener.Gateway.GetNamespace(), gateway.Namespaces)
-	}
-	for _, listenerSet := range gateway.ListenerSets {
-		for _, listener := range listenerSet.Listeners {
-			listener.AllowedRouteNamespaces = helpers.AllowedRouteNamespaces(
-				listener.Listener, listener.ListenerSet.GetNamespace(), gateway.Namespaces)
-		}
 	}
 }
 
@@ -340,6 +200,22 @@ func (root *GatewayRootNode) addGatewayListeners() {
 			Valid:    true,
 		})
 	}
+}
+
+func (node *GatewayNode) SortListenerSets() {
+	sort.Slice(node.ListenerSets, func(i, j int) bool {
+		left := node.ListenerSets[i].ListenerSet
+		right := node.ListenerSets[j].ListenerSet
+		leftTimestamp := left.CreationTimestamp.Time
+		rightTimestamp := right.CreationTimestamp.Time
+		if !leftTimestamp.Equal(rightTimestamp) {
+			return leftTimestamp.Before(rightTimestamp)
+		}
+
+		leftName := left.GetNamespace() + "/" + left.GetName()
+		rightName := right.GetNamespace() + "/" + right.GetName()
+		return leftName < rightName
+	})
 }
 
 func referenceGrantValues(grants []*gatewayv1.ReferenceGrant) []gatewayv1.ReferenceGrant {

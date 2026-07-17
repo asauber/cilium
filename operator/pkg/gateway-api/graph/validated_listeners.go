@@ -35,6 +35,43 @@ type ValidatedListener struct {
 	UDPRoutes  []gatewayv1.UDPRoute
 }
 
+func (root *GatewayRootNode) BuildValidatedListeners() []ValidatedListener {
+	listeners := root.validListeners()
+	hostnamesByProtocol := listenerHostnamesByProtocol(listeners)
+	validated := make([]ValidatedListener, 0, len(listeners))
+	for _, listener := range listeners {
+		validated = append(validated, ValidatedListener{
+			Listener: listener.Listener, Source: listenerSource(listener),
+			HTTPRoutes: acceptedHTTPRoutes(listener, hostnamesByProtocol),
+			GRPCRoutes: acceptedGRPCRoutes(listener, hostnamesByProtocol),
+			TLSRoutes:  acceptedTLSRoutes(listener, hostnamesByProtocol),
+			TCPRoutes:  acceptedTCPRoutes(listener), UDPRoutes: acceptedUDPRoutes(listener),
+		})
+	}
+	return validated
+}
+
+func (root *GatewayRootNode) validListeners() []*ListenerNode {
+	listeners := root.allListeners()
+	valid := listeners[:0]
+	for _, listener := range listeners {
+		if listener.Valid {
+			valid = append(valid, listener)
+		}
+	}
+	return valid
+}
+
+func (root *GatewayRootNode) allListeners() []*ListenerNode {
+	gw := root.GatewayClass.Gateway
+	listeners := make([]*ListenerNode, 0, len(gw.Listeners))
+	listeners = append(listeners, gw.Listeners...)
+	for _, listenerSet := range gw.ListenerSets {
+		listeners = append(listeners, listenerSet.Listeners...)
+	}
+	return listeners
+}
+
 func listenerHostnamesByProtocol(listeners []*ListenerNode) map[gatewayv1.ProtocolType][]string {
 	hostnames := make(map[gatewayv1.ProtocolType][]string)
 	for _, listener := range listeners {

@@ -45,6 +45,49 @@ func gatewayAllowsListenerSet(
 	return false
 }
 
+func (root *GatewayRootNode) ValidateAllowedListenerSets() {
+	gw := root.GatewayClass.Gateway
+	for _, listenerSet := range gw.ListenerSets {
+		listenerSet.Allowed = gatewayAllowsListenerSet(*gw.Gateway, *listenerSet.ListenerSet, gw.Namespaces)
+	}
+}
+
+func (root *GatewayRootNode) SetListenerSetStatuses() {
+	gw := root.GatewayClass.Gateway
+	gw.Gateway.Status.AttachedListenerSets = nil
+
+	var validAttachedCount int32
+	for _, node := range gw.ListenerSets {
+		listenerSet := node.ListenerSet
+		if !node.Allowed {
+			listenerSet.Status.Listeners = nil
+			setListenerSetAccepted(listenerSet, false, "ListenerSet is not allowed by the Gateway's allowedListeners policy", gatewayv1.ListenerSetReasonNotAllowed)
+			setListenerSetProgrammed(listenerSet, false, "ListenerSet is not allowed by the Gateway's allowedListeners policy", gatewayv1.ListenerSetReasonNotAllowed)
+			continue
+		}
+
+		oneValidListener := false
+		statuses := make([]gatewayv1.ListenerEntryStatus, 0, len(node.Listeners))
+		for _, listener := range node.Listeners {
+			oneValidListener = oneValidListener || listener.Valid
+			statuses = append(statuses, gatewayv1.ListenerEntryStatus{Name: listener.Listener.Name, SupportedKinds: listener.SupportedKinds, Conditions: listener.Conditions, AttachedRoutes: listener.AttachedRoutes})
+		}
+		listenerSet.Status.Listeners = statuses
+
+		if oneValidListener {
+			validAttachedCount++
+			setListenerSetAccepted(listenerSet, true, "ListenerSet is accepted", gatewayv1.ListenerSetReasonAccepted)
+			setListenerSetProgrammed(listenerSet, true, "ListenerSet is programmed", gatewayv1.ListenerSetReasonProgrammed)
+			continue
+		}
+		setListenerSetAccepted(listenerSet, false, "No valid listeners", gatewayv1.ListenerSetReasonListenersNotValid)
+		setListenerSetProgrammed(listenerSet, false, "No valid listeners", gatewayv1.ListenerSetReasonListenersNotValid)
+	}
+	if validAttachedCount > 0 {
+		gw.Gateway.Status.AttachedListenerSets = &validAttachedCount
+	}
+}
+
 func setListenerSetAccepted(
 	listenerSet *gatewayv1.ListenerSet, accepted bool, message string, reason gatewayv1.ListenerSetConditionReason,
 ) {

@@ -4,6 +4,7 @@
 package graph
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -14,7 +15,108 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
+	"github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2alpha1"
 )
+
+func (node *GatewayNode) Validate() error {
+	if ref := node.Gateway.Spec.Infrastructure; ref != nil && ref.ParametersRef != nil {
+		node.SetAccepted(
+			false,
+			"Invalid Gateway parameters: spec.infrastructure.parametersRef is not supported",
+			gatewayv1.GatewayReasonInvalidParameters,
+		)
+		node.SetProgrammed(
+			metav1.ConditionUnknown,
+			"Waiting for Accepted condition to be True",
+			gatewayv1.GatewayReasonPending,
+		)
+		return errors.New("Invalid Gateway")
+	}
+
+	return nil
+}
+
+func (node *GatewayClassNode) Validate() error {
+	ref := node.GatewayClass.Spec.ParametersRef
+	if ref == nil {
+		return nil
+	}
+
+	if ref.Group != v2alpha1.CustomResourceDefinitionGroup || ref.Kind != v2alpha1.CGCCKindDefinition {
+		node.Gateway.SetAccepted(
+			false,
+			"Invalid GatewayClass parameters: spec.parametersRef.kind must be CiliumGatewayClassConfig",
+			gatewayv1.GatewayReasonInvalidParameters,
+		)
+		node.Gateway.SetProgrammed(
+			metav1.ConditionUnknown,
+			"Waiting for Accepted condition to be True",
+			gatewayv1.GatewayReasonPending,
+		)
+		return errors.New("Invalid GatewayClass")
+	}
+
+	if ref.Namespace == nil || string(*ref.Namespace) == "" || ref.Name == "" {
+		node.Gateway.SetAccepted(
+			false,
+			"Invalid GatewayClass parametersRef: both name and namespace are required",
+			gatewayv1.GatewayReasonInvalidParameters,
+		)
+		node.Gateway.SetProgrammed(
+			metav1.ConditionUnknown,
+			"Waiting for Accepted condition to be True",
+			gatewayv1.GatewayReasonPending,
+		)
+		return errors.New("Invalid GatewayClass")
+	}
+
+	return nil
+}
+
+func (node *GatewayNode) SetAccepted(accepted bool, message string, reason gatewayv1.GatewayConditionReason) {
+	status := metav1.ConditionFalse
+	if accepted {
+		status = metav1.ConditionTrue
+	}
+	node.setCondition(metav1.Condition{
+		Type:               string(gatewayv1.GatewayConditionAccepted),
+		Status:             status,
+		Reason:             string(reason),
+		Message:            message,
+		ObservedGeneration: node.Gateway.GetGeneration(),
+		LastTransitionTime: metav1.NewTime(time.Now()),
+	})
+}
+
+func (node *GatewayNode) SetProgrammed(
+	status metav1.ConditionStatus, message string, reason gatewayv1.GatewayConditionReason,
+) {
+	node.setCondition(metav1.Condition{
+		Type:               string(gatewayv1.GatewayConditionProgrammed),
+		Status:             status,
+		Reason:             string(reason),
+		Message:            message,
+		ObservedGeneration: node.Gateway.GetGeneration(),
+		LastTransitionTime: metav1.NewTime(time.Now()),
+	})
+}
+
+func (node *GatewayNode) setCondition(update metav1.Condition) {
+	for index, condition := range node.Gateway.Status.Conditions {
+		if condition.Type != update.Type {
+			continue
+		}
+		if condition.Status != update.Status ||
+			condition.Reason != update.Reason ||
+			condition.Message != update.Message ||
+			condition.ObservedGeneration != update.ObservedGeneration {
+			node.Gateway.Status.Conditions[index] = update
+		}
+		return
+	}
+
+	node.Gateway.Status.Conditions = append(node.Gateway.Status.Conditions, update)
+}
 
 func validateListenerNode(
 	ln *ListenerNode,
@@ -425,99 +527,4 @@ func groupDerefOr(group *gatewayv1.Group, defaultGroup string) string {
 		return string(*group)
 	}
 	return defaultGroup
-}
-
-func (node *ListenerNode) AddRoutes(
-	httpRoutes *gatewayv1.HTTPRouteList,
-	grpcRoutes *gatewayv1.GRPCRouteList,
-	tlsRoutes *gatewayv1.TLSRouteList,
-	tcpRoutes *gatewayv1.TCPRouteList,
-	udpRoutes *gatewayv1.UDPRouteList,
-) {
-	for index := range httpRoutes.Items {
-		route := &httpRoutes.Items[index]
-		if node.ParentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
-			node.HTTPRoutes = append(node.HTTPRoutes, &HTTPRouteNode{Route: route})
-		}
-	}
-	for index := range grpcRoutes.Items {
-		route := &grpcRoutes.Items[index]
-		if node.ParentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
-			node.GRPCRoutes = append(node.GRPCRoutes, &GRPCRouteNode{Route: route})
-		}
-	}
-	for index := range tlsRoutes.Items {
-		route := &tlsRoutes.Items[index]
-		if node.ParentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
-			node.TLSRoutes = append(node.TLSRoutes, &TLSRouteNode{Route: route})
-		}
-	}
-	for index := range tcpRoutes.Items {
-		route := &tcpRoutes.Items[index]
-		if node.ParentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
-			node.TCPRoutes = append(node.TCPRoutes, &TCPRouteNode{Route: route})
-		}
-	}
-	for index := range udpRoutes.Items {
-		route := &udpRoutes.Items[index]
-		if node.ParentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
-			node.UDPRoutes = append(node.UDPRoutes, &UDPRouteNode{Route: route})
-		}
-	}
-}
-
-func (node *ListenerNode) ParentRefsTarget(parentRefs []gatewayv1.ParentReference, routeNamespace string) bool {
-	for _, ref := range parentRefs {
-		refKind := "Gateway"
-		if ref.Kind != nil {
-			refKind = string(*ref.Kind)
-		}
-		if refKind != node.parentKind() {
-			continue
-		}
-		if string(ref.Name) != node.parentName() {
-			continue
-		}
-		refNamespace := routeNamespace
-		if ref.Namespace != nil {
-			refNamespace = string(*ref.Namespace)
-		}
-		if refNamespace != node.parentNamespace() {
-			continue
-		}
-		if ref.SectionName != nil && *ref.SectionName != node.Listener.Name {
-			continue
-		}
-		if ref.Port != nil && *ref.Port != node.Listener.Port {
-			continue
-		}
-		return true
-	}
-
-	return false
-}
-
-func (node *ListenerNode) parentKind() string {
-	if node.Gateway != nil {
-		return "Gateway"
-	}
-	return "ListenerSet"
-}
-
-func (node *ListenerNode) parentName() string {
-	if node.Gateway != nil {
-		return node.Gateway.GetName()
-	}
-	return node.ListenerSet.GetName()
-}
-
-func (node *ListenerNode) parentNamespace() string {
-	if node.Gateway != nil {
-		return node.Gateway.GetNamespace()
-	}
-	return node.ListenerSet.GetNamespace()
-}
-
-func (node *ListenerNode) OwnerNamespace() string {
-	return node.parentNamespace()
 }
