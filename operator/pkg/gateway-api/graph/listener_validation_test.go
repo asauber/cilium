@@ -239,19 +239,84 @@ func Test_listenerPairConflict(t *testing.T) {
 		wantReason gatewayv1.ListenerConditionReason
 		wantOK     bool
 	}{
-		{"different ports never conflict", muxedListener("a", gatewayv1.HTTPProtocolType, 80, "foo.example.com"), muxedListener("b", gatewayv1.HTTPProtocolType, 81, "foo.example.com"), "", false},
-		{"same protocol distinct hostnames coexist", muxedListener("a", gatewayv1.HTTPProtocolType, 80, "foo.example.com"), muxedListener("b", gatewayv1.HTTPProtocolType, 80, "bar.example.com"), "", false},
-		{"same protocol wildcard and specific hostname coexist", muxedListener("a", gatewayv1.HTTPProtocolType, 80, "*.example.com"), muxedListener("b", gatewayv1.HTTPProtocolType, 80, "foo.example.com"), "", false},
-		{"same protocol identical hostname conflicts", muxedListener("a", gatewayv1.HTTPProtocolType, 80, "foo.example.com"), muxedListener("b", gatewayv1.HTTPProtocolType, 80, "foo.example.com"), gatewayv1.ListenerReasonHostnameConflict, true},
-		{"same protocol identical wildcard hostname conflicts", muxedListener("a", gatewayv1.HTTPProtocolType, 80, "*.example.com"), muxedListener("b", gatewayv1.HTTPProtocolType, 80, "*.example.com"), gatewayv1.ListenerReasonHostnameConflict, true},
-		{"same protocol both catch-all hostnames conflict", muxedListener("a", gatewayv1.HTTPProtocolType, 80, ""), muxedListener("b", gatewayv1.HTTPProtocolType, 80, ""), gatewayv1.ListenerReasonHostnameConflict, true},
-		{"http and https same hostname coexist", muxedListener("a", gatewayv1.HTTPProtocolType, 443, "foo.example.com"), muxedListener("b", gatewayv1.HTTPSProtocolType, 443, "foo.example.com"), "", false},
-		{"https and tls passthrough identical hostname conflict", muxedListener("a", gatewayv1.HTTPSProtocolType, 443, "foo.example.com"), tlsPassthroughListener("b", 443, "foo.example.com"), gatewayv1.ListenerReasonProtocolConflict, true},
-		{"https and tls passthrough wildcard overlap conflict", muxedListener("a", gatewayv1.HTTPSProtocolType, 443, "*.example.com"), tlsPassthroughListener("b", 443, "foo.example.com"), gatewayv1.ListenerReasonProtocolConflict, true},
-		{"https and tls passthrough disjoint hostnames coexist", muxedListener("a", gatewayv1.HTTPSProtocolType, 443, "foo.example.com"), tlsPassthroughListener("b", 443, "bar.example.com"), "", false},
-		{"tcp and muxed same port conflict", l4Listener("a", gatewayv1.TCPProtocolType, 80), muxedListener("b", gatewayv1.HTTPProtocolType, 80, "foo.example.com"), gatewayv1.ListenerReasonProtocolConflict, true},
-		{"duplicate tcp same port conflict", l4Listener("a", gatewayv1.TCPProtocolType, 80), l4Listener("b", gatewayv1.TCPProtocolType, 80), gatewayv1.ListenerReasonProtocolConflict, true},
-		{"tcp and udp same port coexist", l4Listener("a", gatewayv1.TCPProtocolType, 80), l4Listener("b", gatewayv1.UDPProtocolType, 80), "", false},
+		{
+			"different ports never conflict",
+			muxedListener("a", gatewayv1.HTTPProtocolType, 80, "foo.example.com"),
+			muxedListener("b", gatewayv1.HTTPProtocolType, 81, "foo.example.com"),
+			"", false,
+		},
+		{
+			"same protocol distinct hostnames coexist",
+			muxedListener("a", gatewayv1.HTTPProtocolType, 80, "foo.example.com"),
+			muxedListener("b", gatewayv1.HTTPProtocolType, 80, "bar.example.com"),
+			"", false,
+		},
+		{
+			"same protocol wildcard and specific hostname coexist",
+			muxedListener("a", gatewayv1.HTTPProtocolType, 80, "*.example.com"),
+			muxedListener("b", gatewayv1.HTTPProtocolType, 80, "foo.example.com"),
+			"", false,
+		},
+		{
+			"same protocol identical hostname conflicts",
+			muxedListener("a", gatewayv1.HTTPProtocolType, 80, "foo.example.com"),
+			muxedListener("b", gatewayv1.HTTPProtocolType, 80, "foo.example.com"),
+			gatewayv1.ListenerReasonHostnameConflict, true,
+		},
+		{
+			"same protocol identical wildcard hostname conflicts",
+			muxedListener("a", gatewayv1.HTTPProtocolType, 80, "*.example.com"),
+			muxedListener("b", gatewayv1.HTTPProtocolType, 80, "*.example.com"),
+			gatewayv1.ListenerReasonHostnameConflict, true,
+		},
+		{
+			"same protocol both catch-all hostnames conflict",
+			muxedListener("a", gatewayv1.HTTPProtocolType, 80, ""),
+			muxedListener("b", gatewayv1.HTTPProtocolType, 80, ""),
+			gatewayv1.ListenerReasonHostnameConflict, true,
+		},
+		{
+			"http and https same hostname coexist",
+			muxedListener("a", gatewayv1.HTTPProtocolType, 443, "foo.example.com"),
+			muxedListener("b", gatewayv1.HTTPSProtocolType, 443, "foo.example.com"),
+			"", false,
+		},
+		{
+			"https and tls passthrough identical hostname conflict",
+			muxedListener("a", gatewayv1.HTTPSProtocolType, 443, "foo.example.com"),
+			tlsPassthroughListener("b", 443, "foo.example.com"),
+			gatewayv1.ListenerReasonProtocolConflict, true,
+		},
+		{
+			"https and tls passthrough wildcard overlap conflict",
+			muxedListener("a", gatewayv1.HTTPSProtocolType, 443, "*.example.com"),
+			tlsPassthroughListener("b", 443, "foo.example.com"),
+			gatewayv1.ListenerReasonProtocolConflict, true,
+		},
+		{
+			"https and tls passthrough disjoint hostnames coexist",
+			muxedListener("a", gatewayv1.HTTPSProtocolType, 443, "foo.example.com"),
+			tlsPassthroughListener("b", 443, "bar.example.com"),
+			"", false,
+		},
+		{
+			"tcp and muxed same port conflict",
+			l4Listener("a", gatewayv1.TCPProtocolType, 80),
+			muxedListener("b", gatewayv1.HTTPProtocolType, 80, "foo.example.com"),
+			gatewayv1.ListenerReasonProtocolConflict, true,
+		},
+		{
+			"duplicate tcp same port conflict",
+			l4Listener("a", gatewayv1.TCPProtocolType, 80),
+			l4Listener("b", gatewayv1.TCPProtocolType, 80),
+			gatewayv1.ListenerReasonProtocolConflict, true,
+		},
+		{
+			"tcp and udp same port coexist",
+			l4Listener("a", gatewayv1.TCPProtocolType, 80),
+			l4Listener("b", gatewayv1.UDPProtocolType, 80),
+			"", false,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
