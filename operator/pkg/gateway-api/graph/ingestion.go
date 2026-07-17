@@ -7,8 +7,33 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/cilium/cilium/operator/pkg/model"
-	"github.com/cilium/cilium/operator/pkg/model/ingestion"
 )
+
+type ValidatedHTTPRoute struct {
+	Route     gatewayv1.HTTPRoute
+	Hostnames []string
+}
+
+type ValidatedGRPCRoute struct {
+	Route     gatewayv1.GRPCRoute
+	Hostnames []string
+}
+
+type ValidatedTLSRoute struct {
+	Route     gatewayv1.TLSRoute
+	Hostnames []string
+}
+
+type ValidatedListener struct {
+	gatewayv1.Listener
+	Source model.FullyQualifiedResource
+
+	HTTPRoutes []ValidatedHTTPRoute
+	GRPCRoutes []ValidatedGRPCRoute
+	TLSRoutes  []ValidatedTLSRoute
+	TCPRoutes  []gatewayv1.TCPRoute
+	UDPRoutes  []gatewayv1.UDPRoute
+}
 
 func listenerHostnamesByProtocol(listeners []*ListenerNode) map[gatewayv1.ProtocolType][]string {
 	hostnames := make(map[gatewayv1.ProtocolType][]string)
@@ -23,11 +48,11 @@ func listenerHostnamesByProtocol(listeners []*ListenerNode) map[gatewayv1.Protoc
 
 func acceptedHTTPRoutes(
 	listener *ListenerNode, hostnamesByProtocol map[gatewayv1.ProtocolType][]string,
-) []ingestion.ValidatedHTTPRoute {
-	var routes []ingestion.ValidatedHTTPRoute
+) []ValidatedHTTPRoute {
+	var routes []ValidatedHTTPRoute
 	for _, route := range listener.HTTPRoutes {
 		if hostnames, accepted := listener.httpRouteAccepted(route, hostnamesByProtocol[listener.Listener.Protocol]); accepted {
-			routes = append(routes, ingestion.ValidatedHTTPRoute{Route: *route.Route, Hostnames: hostnames})
+			routes = append(routes, ValidatedHTTPRoute{Route: *route.Route, Hostnames: hostnames})
 		}
 	}
 	return routes
@@ -35,11 +60,11 @@ func acceptedHTTPRoutes(
 
 func acceptedGRPCRoutes(
 	listener *ListenerNode, hostnamesByProtocol map[gatewayv1.ProtocolType][]string,
-) []ingestion.ValidatedGRPCRoute {
-	var routes []ingestion.ValidatedGRPCRoute
+) []ValidatedGRPCRoute {
+	var routes []ValidatedGRPCRoute
 	for _, route := range listener.GRPCRoutes {
 		if hostnames, accepted := listener.grpcRouteAccepted(route, hostnamesByProtocol[listener.Listener.Protocol]); accepted {
-			routes = append(routes, ingestion.ValidatedGRPCRoute{Route: *route.Route, Hostnames: hostnames})
+			routes = append(routes, ValidatedGRPCRoute{Route: *route.Route, Hostnames: hostnames})
 		}
 	}
 	return routes
@@ -47,11 +72,11 @@ func acceptedGRPCRoutes(
 
 func acceptedTLSRoutes(
 	listener *ListenerNode, hostnamesByProtocol map[gatewayv1.ProtocolType][]string,
-) []ingestion.ValidatedTLSRoute {
-	var routes []ingestion.ValidatedTLSRoute
+) []ValidatedTLSRoute {
+	var routes []ValidatedTLSRoute
 	for _, route := range listener.TLSRoutes {
 		if hostnames, accepted := listener.tlsRouteAccepted(route, hostnamesByProtocol[listener.Listener.Protocol]); accepted {
-			routes = append(routes, ingestion.ValidatedTLSRoute{Route: *route.Route, Hostnames: hostnames})
+			routes = append(routes, ValidatedTLSRoute{Route: *route.Route, Hostnames: hostnames})
 		}
 	}
 	return routes

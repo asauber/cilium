@@ -363,7 +363,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		GatewayClassConfig:         gatewayClassConfig,
 		ServerHeaderTransformation: serverHeaderTransformation,
 		Gateway:                    *gw,
-		ValidatedListeners:         graphRoot.BuildValidatedListeners(),
+		ValidatedListeners:         toIngestionValidatedListeners(graphRoot.BuildValidatedListeners()),
 		Services:                   servicesList.Items,
 		ServiceImports:             serviceImportsList.Items,
 		ReferenceGrants:            grants.Items,
@@ -445,6 +445,40 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	scopedLog.InfoContext(ctx, "Successfully reconciled Gateway")
 	return controllerruntime.Success()
+}
+
+func toIngestionValidatedListeners(listeners []graph.ValidatedListener) []ingestion.ValidatedListener {
+	validated := make([]ingestion.ValidatedListener, 0, len(listeners))
+	for _, listener := range listeners {
+		httpRoutes := make([]ingestion.ValidatedHTTPRoute, 0, len(listener.HTTPRoutes))
+		for _, route := range listener.HTTPRoutes {
+			httpRoutes = append(httpRoutes, ingestion.ValidatedHTTPRoute{
+				Route: route.Route, Hostnames: route.Hostnames,
+			})
+		}
+		grpcRoutes := make([]ingestion.ValidatedGRPCRoute, 0, len(listener.GRPCRoutes))
+		for _, route := range listener.GRPCRoutes {
+			grpcRoutes = append(grpcRoutes, ingestion.ValidatedGRPCRoute{
+				Route: route.Route, Hostnames: route.Hostnames,
+			})
+		}
+		tlsRoutes := make([]ingestion.ValidatedTLSRoute, 0, len(listener.TLSRoutes))
+		for _, route := range listener.TLSRoutes {
+			tlsRoutes = append(tlsRoutes, ingestion.ValidatedTLSRoute{
+				Route: route.Route, Hostnames: route.Hostnames,
+			})
+		}
+		validated = append(validated, ingestion.ValidatedListener{
+			Listener:   listener.Listener,
+			Source:     listener.Source,
+			HTTPRoutes: httpRoutes,
+			GRPCRoutes: grpcRoutes,
+			TLSRoutes:  tlsRoutes,
+			TCPRoutes:  listener.TCPRoutes,
+			UDPRoutes:  listener.UDPRoutes,
+		})
+	}
+	return validated
 }
 
 func (r *gatewayReconciler) ensureService(ctx context.Context, desired *corev1.Service) error {

@@ -13,7 +13,6 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
-	"github.com/cilium/cilium/operator/pkg/model/ingestion"
 )
 
 func BuildRoot(gateway *gatewayv1.Gateway, gatewayClass *gatewayv1.GatewayClass) *GatewayRootNode {
@@ -45,12 +44,12 @@ func (root *GatewayRootNode) DebugLog(ctx context.Context, log *slog.Logger) {
 	}
 }
 
-func (root *GatewayRootNode) BuildValidatedListeners() []ingestion.ValidatedListener {
+func (root *GatewayRootNode) BuildValidatedListeners() []ValidatedListener {
 	listeners := root.validListeners()
 	hostnamesByProtocol := listenerHostnamesByProtocol(listeners)
-	validated := make([]ingestion.ValidatedListener, 0, len(listeners))
+	validated := make([]ValidatedListener, 0, len(listeners))
 	for _, listener := range listeners {
-		validated = append(validated, ingestion.ValidatedListener{
+		validated = append(validated, ValidatedListener{
 			Listener: listener.Listener, Source: listenerSource(listener),
 			HTTPRoutes: acceptedHTTPRoutes(listener, hostnamesByProtocol),
 			GRPCRoutes: acceptedGRPCRoutes(listener, hostnamesByProtocol),
