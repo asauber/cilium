@@ -148,29 +148,21 @@ func Test_listenerPairConflict(t *testing.T) {
 	}
 }
 
-func listenerNodes(listeners ...*gatewayv1.Listener) []*ListenerNode {
-	nodes := make([]*ListenerNode, len(listeners))
-	for i, l := range listeners {
-		nodes[i] = &ListenerNode{Listener: *l}
-	}
-	return nodes
-}
-
-func Test_conflictedListeners(t *testing.T) {
+func Test_listenerConflicts(t *testing.T) {
 	t.Run("non-conflicting listeners produce no entries", func(t *testing.T) {
-		nodes := listenerNodes(
-			muxedListener("a", gatewayv1.HTTPProtocolType, 80, "foo.example.com"),
-			muxedListener("b", gatewayv1.HTTPProtocolType, 80, "bar.example.com"),
-		)
-		assert.Empty(t, conflictedListeners(nodes))
+		listeners := []gatewayv1.Listener{
+			*muxedListener("a", gatewayv1.HTTPProtocolType, 80, "foo.example.com"),
+			*muxedListener("b", gatewayv1.HTTPProtocolType, 80, "bar.example.com"),
+		}
+		assert.Empty(t, listenerConflicts(listeners, true))
 	})
 
 	t.Run("identical hostname duplicate marks both listeners", func(t *testing.T) {
-		nodes := listenerNodes(
-			muxedListener("a", gatewayv1.HTTPSProtocolType, 443, "foo.example.com"),
-			muxedListener("b", gatewayv1.HTTPSProtocolType, 443, "foo.example.com"),
-		)
-		conflicts := conflictedListeners(nodes)
+		listeners := []gatewayv1.Listener{
+			*muxedListener("a", gatewayv1.HTTPSProtocolType, 443, "foo.example.com"),
+			*muxedListener("b", gatewayv1.HTTPSProtocolType, 443, "foo.example.com"),
+		}
+		conflicts := listenerConflicts(listeners, true)
 		assert.Equal(t, gatewayv1.ListenerReasonHostnameConflict, conflicts["a"].reason)
 		assert.Equal(t, gatewayv1.ListenerReasonHostnameConflict, conflicts["b"].reason)
 		assert.Contains(t, conflicts["a"].message, `listener "b"`)
@@ -178,21 +170,21 @@ func Test_conflictedListeners(t *testing.T) {
 	})
 
 	t.Run("l4 and muxed on same port mark both listeners", func(t *testing.T) {
-		nodes := listenerNodes(
-			l4Listener("a", gatewayv1.TCPProtocolType, 80),
-			muxedListener("b", gatewayv1.HTTPProtocolType, 80, "foo.example.com"),
-		)
-		conflicts := conflictedListeners(nodes)
+		listeners := []gatewayv1.Listener{
+			*l4Listener("a", gatewayv1.TCPProtocolType, 80),
+			*muxedListener("b", gatewayv1.HTTPProtocolType, 80, "foo.example.com"),
+		}
+		conflicts := listenerConflicts(listeners, true)
 		assert.Equal(t, gatewayv1.ListenerReasonProtocolConflict, conflicts["a"].reason)
 		assert.Equal(t, gatewayv1.ListenerReasonProtocolConflict, conflicts["b"].reason)
 	})
 
 	t.Run("https and tls passthrough overlap keeps existing message", func(t *testing.T) {
-		nodes := listenerNodes(
-			muxedListener("https", gatewayv1.HTTPSProtocolType, 443, "api.example.test"),
-			tlsPassthroughListener("tls-passthrough", 443, "api.example.test"),
-		)
-		conflicts := conflictedListeners(nodes)
+		listeners := []gatewayv1.Listener{
+			*muxedListener("https", gatewayv1.HTTPSProtocolType, 443, "api.example.test"),
+			*tlsPassthroughListener("tls-passthrough", 443, "api.example.test"),
+		}
+		conflicts := listenerConflicts(listeners, true)
 		assert.Equal(t, gatewayv1.ListenerReasonProtocolConflict, conflicts["https"].reason)
 		assert.Equal(t,
 			`Listener conflicts with listener "tls-passthrough": same port 443 has overlapping HTTPS and TLS passthrough hostnames.`,
@@ -200,21 +192,24 @@ func Test_conflictedListeners(t *testing.T) {
 	})
 }
 
-func Test_acceptedListeners(t *testing.T) {
+func Test_listenerConflictsMarkCandidate(t *testing.T) {
 	t.Run("later listener loses against an accepted listener", func(t *testing.T) {
-		accepted := &acceptedListeners{}
-		accepted.accept(*muxedListener("gw-https", gatewayv1.HTTPSProtocolType, 443, "*.example.com"))
-
-		conflicts := accepted.checkConflicts(*tlsPassthroughListener("ls-tls", 443, "foo.example.com"))
+		listeners := []gatewayv1.Listener{
+			*muxedListener("gw-https", gatewayv1.HTTPSProtocolType, 443, "*.example.com"),
+			*tlsPassthroughListener("ls-tls", 443, "foo.example.com"),
+		}
+		conflicts := listenerConflicts(listeners, false)
 		assert.Contains(t, conflicts, gatewayv1.SectionName("ls-tls"))
 		assert.Equal(t, gatewayv1.ListenerReasonProtocolConflict, conflicts["ls-tls"].reason)
+		assert.NotContains(t, conflicts, gatewayv1.SectionName("gw-https"))
 	})
 
 	t.Run("distinct hostname on the same protocol is accepted", func(t *testing.T) {
-		accepted := &acceptedListeners{}
-		accepted.accept(*muxedListener("first", gatewayv1.HTTPProtocolType, 80, "foo.example.com"))
-
-		conflicts := accepted.checkConflicts(*muxedListener("second", gatewayv1.HTTPProtocolType, 80, "bar.example.com"))
+		listeners := []gatewayv1.Listener{
+			*muxedListener("first", gatewayv1.HTTPProtocolType, 80, "foo.example.com"),
+			*muxedListener("second", gatewayv1.HTTPProtocolType, 80, "bar.example.com"),
+		}
+		conflicts := listenerConflicts(listeners, false)
 		assert.Empty(t, conflicts)
 	})
 }

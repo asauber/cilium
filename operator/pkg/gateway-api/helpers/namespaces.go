@@ -77,7 +77,7 @@ func isNamespaceSelected(selector *metav1.LabelSelector, routeNamespace string, 
 // It mirrors IsListenerNamespaceAllowed so pre-resolving the set is equivalent
 // to the per-Route check.
 func AllowedRouteNamespaces(
-	listener gatewayv1.Listener, listenerNamespace string, namespaces []corev1.Namespace,
+	listener gatewayv1.Listener, listenerNamespace string, namespaces []*corev1.Namespace,
 ) map[string]struct{} {
 	routes := listener.AllowedRoutes
 	if routes == nil || routes.Namespaces == nil {
@@ -107,7 +107,7 @@ func AllowedRouteNamespaces(
 
 // namespacesMatchingSelector returns the names of namespaces whose labels match
 // the selector. An invalid selector matches nothing.
-func namespacesMatchingSelector(selector *metav1.LabelSelector, namespaces []corev1.Namespace) map[string]struct{} {
+func namespacesMatchingSelector(selector *metav1.LabelSelector, namespaces []*corev1.Namespace) map[string]struct{} {
 	allowed := make(map[string]struct{})
 	sel, err := metav1.LabelSelectorAsSelector(selector)
 	if err != nil {
@@ -125,7 +125,7 @@ func namespacesMatchingSelector(selector *metav1.LabelSelector, namespaces []cor
 // against a ListenerSet, using the provided Namespaces slice for the Selector
 // case. It is a pure, client-free check: the caller must supply the namespaces
 // (all of them) whenever the policy uses a selector.
-func GatewayAllowsListenerSet(gw gatewayv1.Gateway, ls gatewayv1.ListenerSet, namespaces []corev1.Namespace) bool {
+func GatewayAllowsListenerSet(gw gatewayv1.Gateway, ls gatewayv1.ListenerSet, namespaces []*corev1.Namespace) bool {
 	if gw.Spec.AllowedListeners == nil {
 		return false
 	}

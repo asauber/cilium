@@ -83,15 +83,14 @@ func (root *GatewayRootNode) AddNamespaces(namespaces *corev1.NamespaceList) {
 
 func (root *GatewayRootNode) PopulateAllowedRouteNamespaces() {
 	gateway := root.GatewayClass.Gateway
-	namespaces := namespaceValues(gateway.Namespaces)
 	for _, listener := range gateway.Listeners {
 		listener.AllowedRouteNamespaces = helpers.AllowedRouteNamespaces(
-			listener.Listener, listener.Gateway.GetNamespace(), namespaces)
+			listener.Listener, listener.Gateway.GetNamespace(), gateway.Namespaces)
 	}
 	for _, listenerSet := range gateway.ListenerSets {
 		for _, listener := range listenerSet.Listeners {
 			listener.AllowedRouteNamespaces = helpers.AllowedRouteNamespaces(
-				listener.Listener, listener.ListenerSet.GetNamespace(), namespaces)
+				listener.Listener, listener.ListenerSet.GetNamespace(), gateway.Namespaces)
 		}
 	}
 }
@@ -158,14 +157,6 @@ func (root *GatewayRootNode) addGatewayListeners() {
 			Valid:    true,
 		})
 	}
-}
-
-func namespaceValues(namespaces []*corev1.Namespace) []corev1.Namespace {
-	values := make([]corev1.Namespace, len(namespaces))
-	for index, namespace := range namespaces {
-		values[index] = *namespace
-	}
-	return values
 }
 
 func referenceGrantValues(grants []*gatewayv1.ReferenceGrant) []gatewayv1.ReferenceGrant {

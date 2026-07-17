@@ -60,9 +60,10 @@ func (input gatewayTestInput) toInput() Input {
 
 func testValidatedListeners(input gatewayTestInput) []ValidatedListener {
 	hostnamesByProtocol := testListenerHostnamesByProtocol(input.Gateway.Spec.Listeners)
+	namespaces := namespacePointers(input.Namespaces)
 	var listeners []ValidatedListener
 	for _, listener := range input.Gateway.Spec.Listeners {
-		allowedNamespaces := helpers.AllowedRouteNamespaces(listener, input.Gateway.Namespace, input.Namespaces)
+		allowedNamespaces := helpers.AllowedRouteNamespaces(listener, input.Gateway.Namespace, namespaces)
 		listeners = append(listeners, ValidatedListener{
 			Listener: listener,
 			Source: model.FullyQualifiedResource{
@@ -88,6 +89,14 @@ func testValidatedListeners(input gatewayTestInput) []ValidatedListener {
 		})
 	}
 	return listeners
+}
+
+func namespacePointers(namespaces []corev1.Namespace) []*corev1.Namespace {
+	pointers := make([]*corev1.Namespace, len(namespaces))
+	for index := range namespaces {
+		pointers[index] = &namespaces[index]
+	}
+	return pointers
 }
 
 func testListenerHostnamesByProtocol(listeners []gatewayv1.Listener) map[gatewayv1.ProtocolType][]string {

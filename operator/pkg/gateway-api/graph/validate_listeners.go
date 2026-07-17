@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
@@ -27,9 +28,8 @@ import (
 // decide whether to validate a ListenerSet's listeners.
 func (root *GatewayRootNode) ValidateAllowedListenerSets() {
 	gw := root.GatewayClass.Gateway
-	namespaces := namespaceValues(gw.Namespaces)
 	for _, lsn := range gw.ListenerSets {
-		lsn.Allowed = helpers.GatewayAllowsListenerSet(*gw.Gateway, *lsn.ListenerSet, namespaces)
+		lsn.Allowed = helpers.GatewayAllowsListenerSet(*gw.Gateway, *lsn.ListenerSet, gw.Namespaces)
 	}
 }
 
@@ -40,7 +40,11 @@ func (root *GatewayRootNode) ValidateListeners() {
 	gw := root.GatewayClass.Gateway
 	referenceGrants := referenceGrantValues(gw.ReferenceGrants)
 
-	conflicts := conflictedListeners(gw.Listeners)
+	gatewayListeners := make([]gatewayv1.Listener, 0, len(gw.Listeners))
+	for _, ln := range gw.Listeners {
+		gatewayListeners = append(gatewayListeners, ln.Listener)
+	}
+	conflicts := listenerConflicts(gatewayListeners, true)
 
 	for _, ln := range gw.Listeners {
 		validateListenerNode(
@@ -55,10 +59,10 @@ func (root *GatewayRootNode) ValidateListeners() {
 		)
 	}
 
-	accepted := &acceptedListeners{}
+	accepted := []gatewayv1.Listener{}
 	for _, ln := range gw.Listeners {
 		if ln.Valid {
-			accepted.accept(ln.Listener)
+			accepted = append(accepted, ln.Listener)
 		}
 	}
 
@@ -71,7 +75,7 @@ func (root *GatewayRootNode) ValidateListeners() {
 		}
 
 		for _, ln := range lsn.Listeners {
-			lsConflicts := accepted.checkConflicts(ln.Listener)
+			lsConflicts := listenerConflicts(append(accepted, ln.Listener), false)
 
 			validateListenerNode(
 				ln,
@@ -85,7 +89,7 @@ func (root *GatewayRootNode) ValidateListeners() {
 			)
 
 			if ln.Valid {
-				accepted.accept(ln.Listener)
+				accepted = append(accepted, ln.Listener)
 			}
 		}
 	}
@@ -379,27 +383,29 @@ func listenerInvalidRouteKindsCond(generation int64, msg string) metav1.Conditio
 	}
 }
 
-// Conflict detection
-
 type listenerConflict struct {
 	reason  gatewayv1.ListenerConditionReason
 	message string
 }
 
-func conflictedListeners(listeners []*ListenerNode) map[gatewayv1.SectionName]listenerConflict {
+func listenerConflicts(
+	listeners []gatewayv1.Listener, markBoth bool,
+) map[gatewayv1.SectionName]listenerConflict {
 	conflicts := map[gatewayv1.SectionName]listenerConflict{}
 
 	for i := range listeners {
 		for j := i + 1; j < len(listeners); j++ {
-			first := &listeners[i].Listener
-			second := &listeners[j].Listener
+			first := &listeners[i]
+			second := &listeners[j]
 			reason, ok := listenerPairConflict(first, second)
 			if !ok {
 				continue
 			}
-			conflicts[first.Name] = listenerConflict{
-				reason:  reason,
-				message: listenerConflictMessage(reason, first, second),
+			if markBoth {
+				conflicts[first.Name] = listenerConflict{
+					reason:  reason,
+					message: listenerConflictMessage(reason, first, second),
+				}
 			}
 			conflicts[second.Name] = listenerConflict{
 				reason:  reason,
@@ -477,76 +483,29 @@ func listenerConflictMessage(reason gatewayv1.ListenerConditionReason, self, oth
 	}
 }
 
-// acceptedListeners tracks listeners that have won their port slot, used for
-// checking ListenerSet listeners against Gateway listeners.
-type acceptedListeners struct {
-	listeners []gatewayv1.Listener
-}
-
-func (a *acceptedListeners) checkConflicts(l gatewayv1.Listener) map[gatewayv1.SectionName]listenerConflict {
-	for i := range a.listeners {
-		reason, ok := listenerPairConflict(&a.listeners[i], &l)
-		if !ok {
-			continue
-		}
-		return map[gatewayv1.SectionName]listenerConflict{
-			l.Name: {
-				reason:  reason,
-				message: listenerConflictMessage(reason, &l, &a.listeners[i]),
-			},
-		}
-	}
-	return nil
-}
-
-func (a *acceptedListeners) accept(l gatewayv1.Listener) {
-	a.listeners = append(a.listeners, l)
-}
-
-// Protocol to supported kinds mapping
-
 func getSupportedRouteKinds(protocol gatewayv1.ProtocolType) []gatewayv1.RouteGroupKind {
+	var routeKinds []string
 	switch protocol {
 	case gatewayv1.HTTPProtocolType, gatewayv1.HTTPSProtocolType:
-		return []gatewayv1.RouteGroupKind{
-			{
-				Group: groupPtr(gatewayv1.GroupName),
-				Kind:  "HTTPRoute",
-			},
-			{
-				Group: groupPtr(gatewayv1.GroupName),
-				Kind:  "GRPCRoute",
-			},
-		}
+		routeKinds = []string{"HTTPRoute", "GRPCRoute"}
 	case gatewayv1.TLSProtocolType:
-		return []gatewayv1.RouteGroupKind{
-			{
-				Group: groupPtr(gatewayv1.GroupName),
-				Kind:  "TLSRoute",
-			},
-		}
+		routeKinds = []string{"TLSRoute"}
 	case gatewayv1.TCPProtocolType:
-		return []gatewayv1.RouteGroupKind{
-			{
-				Group: groupPtr(gatewayv1.GroupName),
-				Kind:  "TCPRoute",
-			},
-		}
+		routeKinds = []string{"TCPRoute"}
 	case gatewayv1.UDPProtocolType:
-		return []gatewayv1.RouteGroupKind{
-			{
-				Group: groupPtr(gatewayv1.GroupName),
-				Kind:  "UDPRoute",
-			},
-		}
+		routeKinds = []string{"UDPRoute"}
 	default:
 		return nil
 	}
-}
 
-func groupPtr(name string) *gatewayv1.Group {
-	g := gatewayv1.Group(name)
-	return &g
+	supported := make([]gatewayv1.RouteGroupKind, 0, len(routeKinds))
+	for _, kind := range routeKinds {
+		supported = append(supported, gatewayv1.RouteGroupKind{
+			Group: ptr.To(gatewayv1.Group(gatewayv1.GroupName)),
+			Kind:  gatewayv1.Kind(kind),
+		})
+	}
+	return supported
 }
 
 func groupDerefOr(group *gatewayv1.Group, defaultGroup string) string {

@@ -216,7 +216,7 @@ func TestAllowedRouteNamespaces(t *testing.T) {
 	none := gatewayv1.NamespacesFromNone
 	selector := gatewayv1.NamespacesFromSelector
 
-	namespaces := []corev1.Namespace{
+	namespaces := []*corev1.Namespace{
 		{ObjectMeta: metav1.ObjectMeta{Name: "prod", Labels: map[string]string{"env": "prod"}}},
 		{ObjectMeta: metav1.ObjectMeta{Name: "dev", Labels: map[string]string{"env": "dev"}}},
 		{ObjectMeta: metav1.ObjectMeta{Name: "own"}},
@@ -263,7 +263,7 @@ func TestGatewayAllowsListenerSet(t *testing.T) {
 	same := gatewayv1.NamespacesFromSame
 	selector := gatewayv1.NamespacesFromSelector
 
-	namespaces := []corev1.Namespace{
+	namespaces := []*corev1.Namespace{
 		{ObjectMeta: metav1.ObjectMeta{Name: "infra-ns", Labels: map[string]string{"team": "infra"}}},
 		{ObjectMeta: metav1.ObjectMeta{Name: "other-ns", Labels: map[string]string{"team": "platform"}}},
 	}
