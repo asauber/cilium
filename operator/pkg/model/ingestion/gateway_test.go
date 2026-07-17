@@ -18,6 +18,7 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	mcsapiv1beta1 "sigs.k8s.io/mcs-api/pkg/apis/v1beta1"
 
+	"github.com/cilium/cilium/operator/pkg/gateway-api/graph"
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
 	"github.com/cilium/cilium/operator/pkg/model"
 	"github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2alpha1"
@@ -59,164 +60,125 @@ func (input gatewayTestInput) toInput() Input {
 }
 
 func testValidatedListeners(input gatewayTestInput) []ValidatedListener {
-	hostnamesByProtocol := testListenerHostnamesByProtocol(input.Gateway.Spec.Listeners)
-	namespaces := namespacePointers(input.Namespaces)
-	var listeners []ValidatedListener
-	for _, listener := range input.Gateway.Spec.Listeners {
-		allowedNamespaces := helpers.AllowedRouteNamespaces(listener, input.Gateway.Namespace, namespaces)
-		listeners = append(listeners, ValidatedListener{
-			Listener: listener,
-			Source: model.FullyQualifiedResource{
-				Name:      input.Gateway.Name,
-				Namespace: input.Gateway.Namespace,
-				Group:     gatewayv1.SchemeGroupVersion.Group,
-				Version:   gatewayv1.SchemeGroupVersion.Version,
-				Kind:      "Gateway",
-				UID:       string(input.Gateway.UID),
-			},
-			HTTPRoutes: testHTTPRoutes(input.HTTPRoutes, input.Gateway, listener, allowedNamespaces,
-				hostnamesByProtocol[listener.Protocol]),
-			GRPCRoutes: testGRPCRoutes(input.GRPCRoutes, input.Gateway, listener, allowedNamespaces,
-				hostnamesByProtocol[listener.Protocol]),
-			TLSRoutes: testTLSRoutes(input.TLSRoutes, input.Gateway, listener, allowedNamespaces,
-				hostnamesByProtocol[listener.Protocol]),
-			TCPRoutes: testRoutesForListener(input.TCPRoutes, func(route gatewayv1.TCPRoute) []gatewayv1.ParentReference {
-				return route.Spec.ParentRefs
-			}, func(route gatewayv1.TCPRoute) string { return route.Namespace }, input.Gateway, listener, allowedNamespaces),
-			UDPRoutes: testRoutesForListener(input.UDPRoutes, func(route gatewayv1.UDPRoute) []gatewayv1.ParentReference {
-				return route.Spec.ParentRefs
-			}, func(route gatewayv1.UDPRoute) string { return route.Namespace }, input.Gateway, listener, allowedNamespaces),
+	root := graph.BuildRoot(&input.Gateway, &input.GatewayClass)
+	root.AddReferenceGrants(&gatewayv1.ReferenceGrantList{Items: input.ReferenceGrants})
+	root.AddNamespaces(&corev1.NamespaceList{Items: input.Namespaces})
+	root.AddTLSSecrets(testTLSSecrets(input.Gateway))
+
+	httpRoutes := &gatewayv1.HTTPRouteList{Items: input.HTTPRoutes}
+	grpcRoutes := &gatewayv1.GRPCRouteList{Items: input.GRPCRoutes}
+	tlsRoutes := &gatewayv1.TLSRouteList{Items: input.TLSRoutes}
+	tcpRoutes := &gatewayv1.TCPRouteList{Items: input.TCPRoutes}
+	udpRoutes := &gatewayv1.UDPRouteList{Items: input.UDPRoutes}
+	markTestRoutesAccepted(httpRoutes, grpcRoutes, tlsRoutes, tcpRoutes, udpRoutes)
+
+	root.AddRoutes(httpRoutes, grpcRoutes, tlsRoutes, tcpRoutes, udpRoutes)
+	root.PopulateAllowedRouteNamespaces()
+	root.ValidateListeners()
+	for _, listener := range root.GatewayClass.Gateway.Listeners {
+		listener.Valid = true
+	}
+
+	return toTestIngestionValidatedListeners(root.BuildValidatedListeners())
+}
+
+func testTLSSecrets(gateway gatewayv1.Gateway) map[types.NamespacedName]helpers.TLSSecretValidation {
+	validations := make(map[types.NamespacedName]helpers.TLSSecretValidation)
+	for _, listener := range gateway.Spec.Listeners {
+		if listener.TLS == nil {
+			continue
+		}
+		for _, certificateRef := range listener.TLS.CertificateRefs {
+			namespace := gateway.Namespace
+			if certificateRef.Namespace != nil {
+				namespace = string(*certificateRef.Namespace)
+			}
+			validations[types.NamespacedName{
+				Namespace: namespace,
+				Name:      string(certificateRef.Name),
+			}] = helpers.TLSSecretValidation{Valid: true}
+		}
+	}
+	return validations
+}
+
+func markTestRoutesAccepted(
+	httpRoutes *gatewayv1.HTTPRouteList,
+	grpcRoutes *gatewayv1.GRPCRouteList,
+	tlsRoutes *gatewayv1.TLSRouteList,
+	tcpRoutes *gatewayv1.TCPRouteList,
+	udpRoutes *gatewayv1.UDPRouteList,
+) {
+	markAccepted(httpRoutes.Items, func(route *gatewayv1.HTTPRoute) []gatewayv1.ParentReference {
+		return route.Spec.ParentRefs
+	}, func(route *gatewayv1.HTTPRoute, parents []gatewayv1.RouteParentStatus) {
+		route.Status.Parents = parents
+	})
+	markAccepted(grpcRoutes.Items, func(route *gatewayv1.GRPCRoute) []gatewayv1.ParentReference {
+		return route.Spec.ParentRefs
+	}, func(route *gatewayv1.GRPCRoute, parents []gatewayv1.RouteParentStatus) {
+		route.Status.Parents = parents
+	})
+	markAccepted(tlsRoutes.Items, func(route *gatewayv1.TLSRoute) []gatewayv1.ParentReference {
+		return route.Spec.ParentRefs
+	}, func(route *gatewayv1.TLSRoute, parents []gatewayv1.RouteParentStatus) {
+		route.Status.Parents = parents
+	})
+	markAccepted(tcpRoutes.Items, func(route *gatewayv1.TCPRoute) []gatewayv1.ParentReference {
+		return route.Spec.ParentRefs
+	}, func(route *gatewayv1.TCPRoute, parents []gatewayv1.RouteParentStatus) {
+		route.Status.Parents = parents
+	})
+	markAccepted(udpRoutes.Items, func(route *gatewayv1.UDPRoute) []gatewayv1.ParentReference {
+		return route.Spec.ParentRefs
+	}, func(route *gatewayv1.UDPRoute, parents []gatewayv1.RouteParentStatus) {
+		route.Status.Parents = parents
+	})
+}
+
+func markAccepted[T any](
+	routes []T,
+	parentRefs func(*T) []gatewayv1.ParentReference,
+	setParents func(*T, []gatewayv1.RouteParentStatus),
+) {
+	for index := range routes {
+		route := &routes[index]
+		parents := make([]gatewayv1.RouteParentStatus, 0, len(parentRefs(route)))
+		for _, parentRef := range parentRefs(route) {
+			parents = append(parents, gatewayv1.RouteParentStatus{
+				ParentRef: parentRef,
+				Conditions: []metav1.Condition{{
+					Type:   string(gatewayv1.RouteConditionAccepted),
+					Status: metav1.ConditionTrue,
+				}},
+			})
+		}
+		setParents(route, parents)
+	}
+}
+
+func toTestIngestionValidatedListeners(listeners []graph.ValidatedListener) []ValidatedListener {
+	validated := make([]ValidatedListener, 0, len(listeners))
+	for _, listener := range listeners {
+		httpRoutes := make([]ValidatedHTTPRoute, 0, len(listener.HTTPRoutes))
+		for _, route := range listener.HTTPRoutes {
+			httpRoutes = append(httpRoutes, ValidatedHTTPRoute{Route: route.Route, Hostnames: route.Hostnames})
+		}
+		grpcRoutes := make([]ValidatedGRPCRoute, 0, len(listener.GRPCRoutes))
+		for _, route := range listener.GRPCRoutes {
+			grpcRoutes = append(grpcRoutes, ValidatedGRPCRoute{Route: route.Route, Hostnames: route.Hostnames})
+		}
+		tlsRoutes := make([]ValidatedTLSRoute, 0, len(listener.TLSRoutes))
+		for _, route := range listener.TLSRoutes {
+			tlsRoutes = append(tlsRoutes, ValidatedTLSRoute{Route: route.Route, Hostnames: route.Hostnames})
+		}
+		validated = append(validated, ValidatedListener{
+			Listener: listener.Listener, Source: listener.Source,
+			HTTPRoutes: httpRoutes, GRPCRoutes: grpcRoutes, TLSRoutes: tlsRoutes,
+			TCPRoutes: listener.TCPRoutes, UDPRoutes: listener.UDPRoutes,
 		})
 	}
-	return listeners
-}
-
-func namespacePointers(namespaces []corev1.Namespace) []*corev1.Namespace {
-	pointers := make([]*corev1.Namespace, len(namespaces))
-	for index := range namespaces {
-		pointers[index] = &namespaces[index]
-	}
-	return pointers
-}
-
-func testListenerHostnamesByProtocol(listeners []gatewayv1.Listener) map[gatewayv1.ProtocolType][]string {
-	hostnames := make(map[gatewayv1.ProtocolType][]string)
-	for _, listener := range listeners {
-		if listener.Hostname != nil {
-			hostnames[listener.Protocol] = append(hostnames[listener.Protocol], string(*listener.Hostname))
-		}
-	}
-	return hostnames
-}
-
-func testHTTPRoutes(
-	routes []gatewayv1.HTTPRoute,
-	gateway gatewayv1.Gateway,
-	listener gatewayv1.Listener,
-	allowedNamespaces map[string]struct{},
-	listenerHostnames []string,
-) []ValidatedHTTPRoute {
-	var validated []ValidatedHTTPRoute
-	for _, route := range testRoutesForListener(routes, func(route gatewayv1.HTTPRoute) []gatewayv1.ParentReference {
-		return route.Spec.ParentRefs
-	}, func(route gatewayv1.HTTPRoute) string { return route.Namespace }, gateway, listener, allowedNamespaces) {
-		hostnames := model.ComputeHosts(toStringSlice(route.Spec.Hostnames), (*string)(listener.Hostname), listenerHostnames)
-		if len(hostnames) > 0 {
-			validated = append(validated, ValidatedHTTPRoute{Route: route, Hostnames: hostnames})
-		}
-	}
 	return validated
-}
-
-func testGRPCRoutes(
-	routes []gatewayv1.GRPCRoute,
-	gateway gatewayv1.Gateway,
-	listener gatewayv1.Listener,
-	allowedNamespaces map[string]struct{},
-	listenerHostnames []string,
-) []ValidatedGRPCRoute {
-	var validated []ValidatedGRPCRoute
-	for _, route := range testRoutesForListener(routes, func(route gatewayv1.GRPCRoute) []gatewayv1.ParentReference {
-		return route.Spec.ParentRefs
-	}, func(route gatewayv1.GRPCRoute) string { return route.Namespace }, gateway, listener, allowedNamespaces) {
-		hostnames := model.ComputeHosts(toStringSlice(route.Spec.Hostnames), (*string)(listener.Hostname), listenerHostnames)
-		if len(hostnames) > 0 {
-			validated = append(validated, ValidatedGRPCRoute{Route: route, Hostnames: hostnames})
-		}
-	}
-	return validated
-}
-
-func testTLSRoutes(
-	routes []gatewayv1.TLSRoute,
-	gateway gatewayv1.Gateway,
-	listener gatewayv1.Listener,
-	allowedNamespaces map[string]struct{},
-	listenerHostnames []string,
-) []ValidatedTLSRoute {
-	var validated []ValidatedTLSRoute
-	for _, route := range testRoutesForListener(routes, func(route gatewayv1.TLSRoute) []gatewayv1.ParentReference {
-		return route.Spec.ParentRefs
-	}, func(route gatewayv1.TLSRoute) string { return route.Namespace }, gateway, listener, allowedNamespaces) {
-		hostnames := model.ComputeHosts(toStringSlice(route.Spec.Hostnames), (*string)(listener.Hostname), listenerHostnames)
-		if len(hostnames) > 0 {
-			validated = append(validated, ValidatedTLSRoute{Route: route, Hostnames: hostnames})
-		}
-	}
-	return validated
-}
-
-func testRoutesForListener[T any](
-	routes []T,
-	parentRefs func(T) []gatewayv1.ParentReference,
-	namespace func(T) string,
-	gateway gatewayv1.Gateway,
-	listener gatewayv1.Listener,
-	allowedNamespaces map[string]struct{},
-) []T {
-	var validated []T
-	for _, route := range routes {
-		if testRouteTargetsListener(parentRefs(route), namespace(route), gateway, listener, allowedNamespaces) {
-			validated = append(validated, route)
-		}
-	}
-	return validated
-}
-
-func testRouteTargetsListener(
-	parentRefs []gatewayv1.ParentReference,
-	routeNamespace string,
-	gateway gatewayv1.Gateway,
-	listener gatewayv1.Listener,
-	allowedNamespaces map[string]struct{},
-) bool {
-	if allowedNamespaces != nil {
-		if _, allowed := allowedNamespaces[routeNamespace]; !allowed {
-			return false
-		}
-	}
-	for _, parentRef := range parentRefs {
-		if parentRef.Kind != nil && *parentRef.Kind != "Gateway" {
-			continue
-		}
-		if parentRef.Name != gatewayv1.ObjectName(gateway.Name) {
-			continue
-		}
-		if parentRef.Namespace != nil && string(*parentRef.Namespace) != gateway.Namespace {
-			continue
-		}
-		if parentRef.Namespace == nil && routeNamespace != gateway.Namespace {
-			continue
-		}
-		if parentRef.SectionName != nil && *parentRef.SectionName != listener.Name {
-			continue
-		}
-		if parentRef.Port != nil && *parentRef.Port != listener.Port {
-			continue
-		}
-		return true
-	}
-	return false
 }
 
 func TestHTTPGatewayAPI(t *testing.T) {
