@@ -21,6 +21,9 @@ func (node *ListenerNode) Validate(
 	tlsSecrets map[types.NamespacedName]*TLSSecret,
 	conflicts map[gatewayv1.SectionName]listenerConflict,
 ) {
+	node.Valid = true
+	node.invalidMessages = nil
+	node.invalidReason = gatewayv1.ListenerReasonInvalid
 	var generation int64
 	if node.Gateway != nil {
 		generation = node.Gateway.GetGeneration()
@@ -29,49 +32,36 @@ func (node *ListenerNode) Validate(
 	}
 	programmedWhenValid := node.ListenerSet != nil
 
-	isValid := true
-	var invalidMessages []string
-	var invalidReason gatewayv1.ListenerConditionReason = gatewayv1.ListenerReasonInvalid
-
 	if conflict, ok := conflicts[node.Listener.Name]; ok {
 		node.Conditions = helpers.MergeConditions(
 			node.Conditions,
 			listenerConflictedCond(generation, conflict.reason, conflict.message),
 		)
-		invalidMessages = append(invalidMessages, conflict.message)
-		invalidReason = conflict.reason
-		isValid = false
+		node.invalidMessages = append(node.invalidMessages, conflict.message)
+		node.invalidReason = conflict.reason
+		node.Valid = false
 	}
 
 	allSupported := getSupportedRouteKinds(node.Listener.Protocol)
 	if allSupported == nil {
-		invalidMessages = append(invalidMessages, "Unsupported Listener Protocol.")
-		invalidReason = gatewayv1.ListenerReasonUnsupportedProtocol
-		isValid = false
+		node.invalidMessages = append(node.invalidMessages, "Unsupported Listener Protocol.")
+		node.invalidReason = gatewayv1.ListenerReasonUnsupportedProtocol
+		node.Valid = false
 	}
 
-	supportedKinds := computeSupportedKinds(
-		node.Listener, allSupported, generation, &node.Conditions,
-		&invalidMessages, &isValid,
-	)
+	node.SupportedKinds = node.computeSupportedKinds(allSupported, generation)
+	node.validateTLS(generation, grants, tlsSecrets)
 
-	validateTLS(
-		node.Listener, generation, node.ParentNamespace(), node.parentKind(), grants,
-		tlsSecrets, &node.Conditions, &invalidMessages, &isValid,
-		&invalidReason, &supportedKinds,
-	)
-
-	if !isValid {
-		node.Valid = false
+	if !node.Valid {
 		programmedReason := gatewayv1.ListenerReasonPending
 		programmedMsg := "Address not ready yet"
 		if programmedWhenValid {
-			programmedReason = invalidReason
+			programmedReason = node.invalidReason
 			programmedMsg = "Listener not valid"
 		}
 		node.Conditions = helpers.MergeConditions(node.Conditions,
-			listenerAcceptedCond(generation, false, invalidReason,
-				"Listener not valid. "+strings.Join(invalidMessages, " ")),
+			listenerAcceptedCond(generation, false, node.invalidReason,
+				"Listener not valid. "+strings.Join(node.invalidMessages, " ")),
 			listenerProgrammedCond(generation, false,
 				programmedReason, programmedMsg),
 		)
@@ -90,7 +80,6 @@ func (node *ListenerNode) Validate(
 				})
 		}
 	} else {
-		node.Valid = true
 		if !helpers.IsConditionPresent(node.Conditions, string(gatewayv1.ListenerConditionResolvedRefs)) {
 			node.Conditions = helpers.MergeConditions(node.Conditions, metav1.Condition{
 				Type:               string(gatewayv1.ListenerConditionResolvedRefs),
@@ -117,17 +106,13 @@ func (node *ListenerNode) Validate(
 		)
 	}
 
-	node.SupportedKinds = supportedKinds
 }
 
-func computeSupportedKinds(
-	l gatewayv1.Listener,
+func (node *ListenerNode) computeSupportedKinds(
 	allSupported []gatewayv1.RouteGroupKind,
 	generation int64,
-	conds *[]metav1.Condition,
-	invalidMessages *[]string,
-	isValid *bool,
 ) []gatewayv1.RouteGroupKind {
+	l := node.Listener
 	if l.AllowedRoutes == nil || len(l.AllowedRoutes.Kinds) == 0 {
 		return allSupported
 	}
@@ -144,40 +129,34 @@ func computeSupportedKinds(
 	}
 
 	if len(supported) != len(l.AllowedRoutes.Kinds) {
-		*conds = helpers.MergeConditions(*conds, listenerInvalidRouteKindsCond(
+		node.Conditions = helpers.MergeConditions(node.Conditions, listenerInvalidRouteKindsCond(
 			generation, "Unsupported Route Kinds in allowedRoutes.kinds"))
 
 		if len(supported) == 0 {
-			*invalidMessages = append(*invalidMessages,
+			node.invalidMessages = append(node.invalidMessages,
 				"None of the Allowed Route Kinds are supported.")
-			*isValid = false
+			node.Valid = false
 		}
 	}
 
 	return supported
 }
 
-func validateTLS(
-	l gatewayv1.Listener,
+func (node *ListenerNode) validateTLS(
 	generation int64,
-	ownerNamespace string,
-	ownerKind string,
 	grants []gatewayv1.ReferenceGrant,
 	tlsSecrets map[types.NamespacedName]*TLSSecret,
-	conds *[]metav1.Condition,
-	invalidMessages *[]string,
-	isValid *bool,
-	invalidReason *gatewayv1.ListenerConditionReason,
-	supportedKinds *[]gatewayv1.RouteGroupKind,
 ) {
+	l := node.Listener
 	if l.TLS == nil {
 		return
 	}
 
-	ownerGVK := gatewayv1.SchemeGroupVersion.WithKind(ownerKind)
+	tlsMode := ptr.Deref(l.TLS.Mode, gatewayv1.TLSModeType(""))
+	ownerGVK := gatewayv1.SchemeGroupVersion.WithKind(node.parentKind())
 	for _, cert := range l.TLS.CertificateRefs {
 		if !helpers.IsSecret(cert) {
-			*conds = helpers.MergeConditions(*conds, metav1.Condition{
+			node.Conditions = helpers.MergeConditions(node.Conditions, metav1.Condition{
 				Type:               string(gatewayv1.ListenerConditionResolvedRefs),
 				Status:             metav1.ConditionFalse,
 				Reason:             string(gatewayv1.ListenerReasonInvalidCertificateRef),
@@ -185,16 +164,16 @@ func validateTLS(
 				ObservedGeneration: generation,
 				LastTransitionTime: metav1.NewTime(time.Now()),
 			})
-			*invalidMessages = append(*invalidMessages,
+			node.invalidMessages = append(node.invalidMessages,
 				"Invalid CertificateRef, must be a Secret.")
-			*isValid = false
+			node.Valid = false
 			break
 		}
 
 		if !helpers.IsSecretReferenceAllowed(
-			ownerNamespace, cert, ownerGVK, grants,
+			node.ParentNamespace(), cert, ownerGVK, grants,
 		) {
-			*conds = helpers.MergeConditions(*conds, metav1.Condition{
+			node.Conditions = helpers.MergeConditions(node.Conditions, metav1.Condition{
 				Type:               string(gatewayv1.ListenerConditionResolvedRefs),
 				Status:             metav1.ConditionFalse,
 				Reason:             string(gatewayv1.ListenerReasonRefNotPermitted),
@@ -202,13 +181,13 @@ func validateTLS(
 				ObservedGeneration: generation,
 				LastTransitionTime: metav1.NewTime(time.Now()),
 			})
-			*invalidMessages = append(*invalidMessages,
+			node.invalidMessages = append(node.invalidMessages,
 				"Invalid CertificateRef, not permitted.")
-			*isValid = false
+			node.Valid = false
 			break
 		}
 
-		ns := helpers.NamespaceDerefOr(cert.Namespace, ownerNamespace)
+		ns := helpers.NamespaceDerefOr(cert.Namespace, node.ParentNamespace())
 		secretKey := types.NamespacedName{Namespace: ns, Name: string(cert.Name)}
 		tlsSecret, ok := tlsSecrets[secretKey]
 		if !ok || !tlsSecret.Valid {
@@ -216,7 +195,7 @@ func validateTLS(
 			if ok && tlsSecret.Error != nil {
 				validationError = tlsSecret.Error
 			}
-			*conds = helpers.MergeConditions(*conds, metav1.Condition{
+			node.Conditions = helpers.MergeConditions(node.Conditions, metav1.Condition{
 				Type:               string(gatewayv1.ListenerConditionResolvedRefs),
 				Status:             metav1.ConditionFalse,
 				Reason:             string(gatewayv1.ListenerReasonInvalidCertificateRef),
@@ -224,21 +203,19 @@ func validateTLS(
 				ObservedGeneration: generation,
 				LastTransitionTime: metav1.NewTime(time.Now()),
 			})
-			*invalidMessages = append(*invalidMessages,
+			node.invalidMessages = append(node.invalidMessages,
 				"Invalid CertificateRef, "+validationError.Error())
-			*isValid = false
+			node.Valid = false
 			break
 		}
 	}
 
-	if l.Protocol == gatewayv1.TLSProtocolType &&
-		l.TLS.Mode != nil &&
-		*l.TLS.Mode == gatewayv1.TLSModeTerminate {
-		*isValid = false
-		*invalidMessages = append(*invalidMessages,
+	if l.Protocol == gatewayv1.TLSProtocolType && tlsMode == gatewayv1.TLSModeTerminate {
+		node.Valid = false
+		node.invalidMessages = append(node.invalidMessages,
 			"Using TLSRoute with TLS.mode Terminate is unsupported.")
-		*invalidReason = gatewayv1.ListenerReasonUnsupportedValue
-		*supportedKinds = []gatewayv1.RouteGroupKind{}
+		node.invalidReason = gatewayv1.ListenerReasonUnsupportedValue
+		node.SupportedKinds = []gatewayv1.RouteGroupKind{}
 	}
 }
 

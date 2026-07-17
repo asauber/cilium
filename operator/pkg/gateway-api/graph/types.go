@@ -49,9 +49,11 @@ type ListenerNode struct {
 	Gateway     *gatewayv1.Gateway
 	ListenerSet *gatewayv1.ListenerSet
 
-	Valid          bool
-	Conditions     []metav1.Condition
-	SupportedKinds []gatewayv1.RouteGroupKind
+	Valid           bool
+	Conditions      []metav1.Condition
+	SupportedKinds  []gatewayv1.RouteGroupKind
+	invalidMessages []string
+	invalidReason   gatewayv1.ListenerConditionReason
 
 	AllowedRouteNamespaces map[string]struct{}
 	AttachedRoutes         int32
