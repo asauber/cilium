@@ -32,15 +32,16 @@ func (root *GatewayRootNode) DebugLog(ctx context.Context, log *slog.Logger) {
 		return
 	}
 	gw := root.GatewayClass.Gateway
-	log.Debug(fmt.Sprintf("Graph: Gateway %s/%s", gw.Gateway.GetNamespace(), gw.Gateway.GetName()))
+	log.Debug(fmt.Sprintf(graphLogPrefix+"Gateway %s/%s", gw.Gateway.GetNamespace(), gw.Gateway.GetName()))
+	childCount := len(gw.Listeners) + len(gw.ListenerSets)
+	childIndex := 0
 	for _, ln := range gw.Listeners {
-		logListenerSummary(log, ln, "  ")
+		logListenerSummary(log, ln, "", childIndex == childCount-1)
+		childIndex++
 	}
 	for _, lsn := range gw.ListenerSets {
-		log.Debug(fmt.Sprintf("Graph:   ListenerSet %s/%s", lsn.ListenerSet.GetNamespace(), lsn.ListenerSet.GetName()))
-		for _, ln := range lsn.Listeners {
-			logListenerSummary(log, ln, "    ")
-		}
+		logListenerSetSummary(log, lsn, "", childIndex == childCount-1)
+		childIndex++
 	}
 }
 

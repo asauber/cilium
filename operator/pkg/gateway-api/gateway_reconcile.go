@@ -386,9 +386,7 @@ func (r *gatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// ListenerSet status is reported independently from the parent Gateway's
-	// Accepted and Programmed conditions. Those Gateway conditions reflect the
-	// Gateway's local configuration, so valid ListenerSets do not make an
-	// otherwise invalid Gateway accepted or programmed.
+	// Accepted and Programmed conditions
 	r.setListenerSetStatuses(ctx, graphRoot)
 
 	// Step 3: Translate the listeners into Cilium model
