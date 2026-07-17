@@ -54,7 +54,7 @@ func (root *GatewayRootNode) ValidateListeners() {
 	}
 	conflicts := listenerConflicts(gatewayListeners, true)
 	for _, ln := range gw.Listeners {
-		validateListenerNode(ln, gw.Gateway.GetGeneration(), gw.Gateway.GetNamespace(), "Gateway", referenceGrants, gw.TLSSecrets, conflicts, false)
+		ln.Validate(referenceGrants, gw.TLSSecrets, conflicts)
 	}
 	accepted := []gatewayv1.Listener{}
 	for _, ln := range gw.Listeners {
@@ -71,7 +71,7 @@ func (root *GatewayRootNode) ValidateListeners() {
 		}
 		for _, ln := range lsn.Listeners {
 			lsConflicts := listenerConflicts(append(accepted, ln.Listener), false)
-			validateListenerNode(ln, lsn.ListenerSet.GetGeneration(), lsn.ListenerSet.GetNamespace(), "ListenerSet", referenceGrants, gw.TLSSecrets, lsConflicts, true)
+			ln.Validate(referenceGrants, gw.TLSSecrets, lsConflicts)
 			if ln.Valid {
 				accepted = append(accepted, ln.Listener)
 			}

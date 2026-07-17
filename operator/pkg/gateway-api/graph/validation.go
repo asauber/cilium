@@ -118,23 +118,26 @@ func (node *GatewayNode) setCondition(update metav1.Condition) {
 	node.Gateway.Status.Conditions = append(node.Gateway.Status.Conditions, update)
 }
 
-func validateListenerNode(
-	ln *ListenerNode,
-	generation int64,
-	ownerNamespace string,
-	ownerKind string,
+func (node *ListenerNode) Validate(
 	grants []gatewayv1.ReferenceGrant,
 	tlsSecrets map[types.NamespacedName]*TLSSecret,
 	conflicts map[gatewayv1.SectionName]listenerConflict,
-	programmedWhenValid bool,
 ) {
+	var generation int64
+	if node.Gateway != nil {
+		generation = node.Gateway.GetGeneration()
+	} else {
+		generation = node.ListenerSet.GetGeneration()
+	}
+	programmedWhenValid := node.ListenerSet != nil
+
 	isValid := true
 	var invalidMessages []string
 	var invalidReason gatewayv1.ListenerConditionReason = gatewayv1.ListenerReasonInvalid
 
-	if conflict, ok := conflicts[ln.Listener.Name]; ok {
-		ln.Conditions = helpers.MergeConditions(
-			ln.Conditions,
+	if conflict, ok := conflicts[node.Listener.Name]; ok {
+		node.Conditions = helpers.MergeConditions(
+			node.Conditions,
 			listenerConflictedCond(generation, conflict.reason, conflict.message),
 		)
 		invalidMessages = append(invalidMessages, conflict.message)
@@ -142,7 +145,7 @@ func validateListenerNode(
 		isValid = false
 	}
 
-	allSupported := getSupportedRouteKinds(ln.Listener.Protocol)
+	allSupported := getSupportedRouteKinds(node.Listener.Protocol)
 	if allSupported == nil {
 		invalidMessages = append(invalidMessages, "Unsupported Listener Protocol.")
 		invalidReason = gatewayv1.ListenerReasonUnsupportedProtocol
@@ -150,35 +153,35 @@ func validateListenerNode(
 	}
 
 	supportedKinds := computeSupportedKinds(
-		ln.Listener, allSupported, generation, &ln.Conditions,
+		node.Listener, allSupported, generation, &node.Conditions,
 		&invalidMessages, &isValid,
 	)
 
 	validateTLS(
-		ln.Listener, generation, ownerNamespace, ownerKind, grants,
-		tlsSecrets, &ln.Conditions, &invalidMessages, &isValid,
+		node.Listener, generation, node.ParentNamespace(), node.parentKind(), grants,
+		tlsSecrets, &node.Conditions, &invalidMessages, &isValid,
 		&invalidReason, &supportedKinds,
 	)
 
 	if !isValid {
-		ln.Valid = false
+		node.Valid = false
 		programmedReason := gatewayv1.ListenerReasonPending
 		programmedMsg := "Address not ready yet"
 		if programmedWhenValid {
 			programmedReason = invalidReason
 			programmedMsg = "Listener not valid"
 		}
-		ln.Conditions = helpers.MergeConditions(ln.Conditions,
+		node.Conditions = helpers.MergeConditions(node.Conditions,
 			listenerAcceptedCond(generation, false, invalidReason,
 				"Listener not valid. "+strings.Join(invalidMessages, " ")),
 			listenerProgrammedCond(generation, false,
 				programmedReason, programmedMsg),
 		)
 		if !helpers.IsConditionPresent(
-			ln.Conditions,
+			node.Conditions,
 			string(gatewayv1.ListenerConditionResolvedRefs),
 		) {
-			ln.Conditions = helpers.MergeConditions(ln.Conditions,
+			node.Conditions = helpers.MergeConditions(node.Conditions,
 				metav1.Condition{
 					Type:               string(gatewayv1.ListenerConditionResolvedRefs),
 					Status:             metav1.ConditionTrue,
@@ -189,9 +192,9 @@ func validateListenerNode(
 				})
 		}
 	} else {
-		ln.Valid = true
-		if !helpers.IsConditionPresent(ln.Conditions, string(gatewayv1.ListenerConditionResolvedRefs)) {
-			ln.Conditions = helpers.MergeConditions(ln.Conditions, metav1.Condition{
+		node.Valid = true
+		if !helpers.IsConditionPresent(node.Conditions, string(gatewayv1.ListenerConditionResolvedRefs)) {
+			node.Conditions = helpers.MergeConditions(node.Conditions, metav1.Condition{
 				Type:               string(gatewayv1.ListenerConditionResolvedRefs),
 				Status:             metav1.ConditionTrue,
 				Reason:             string(gatewayv1.ListenerReasonResolvedRefs),
@@ -208,7 +211,7 @@ func validateListenerNode(
 				gatewayv1.ListenerConditionProgrammed)
 			programmedMsg = "Listener Programmed"
 		}
-		ln.Conditions = helpers.MergeConditions(ln.Conditions,
+		node.Conditions = helpers.MergeConditions(node.Conditions,
 			listenerAcceptedCond(generation, true,
 				gatewayv1.ListenerReasonAccepted, "Listener Accepted"),
 			listenerProgrammedCond(generation, programmedWhenValid,
@@ -216,7 +219,7 @@ func validateListenerNode(
 		)
 	}
 
-	ln.SupportedKinds = supportedKinds
+	node.SupportedKinds = supportedKinds
 }
 
 func computeSupportedKinds(
