@@ -10,14 +10,6 @@ import (
 	"github.com/cilium/cilium/operator/pkg/model"
 )
 
-func (root *GatewayRootNode) AggregateAttachedRoutes() {
-	listeners := root.allListeners()
-	hostnamesByProtocol := listenerHostnamesByProtocol(listeners)
-	for _, listener := range listeners {
-		listener.AggregateAttachedRoutes(hostnamesByProtocol)
-	}
-}
-
 func (node *ListenerNode) AggregateAttachedRoutes(hostnamesByProtocol map[gatewayv1.ProtocolType][]string) {
 	node.AttachedRoutes = int32(
 		len(acceptedHTTPRoutes(node, hostnamesByProtocol)) +

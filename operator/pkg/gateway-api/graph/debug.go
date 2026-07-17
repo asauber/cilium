@@ -4,33 +4,9 @@
 package graph
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 )
-
-func (root *GatewayRootNode) DebugLog(ctx context.Context, log *slog.Logger) {
-	if !log.Enabled(ctx, slog.LevelDebug) {
-		return
-	}
-
-	gw := root.GatewayClass.Gateway
-
-	log.Debug(fmt.Sprintf("Graph: Gateway %s/%s",
-		gw.Gateway.GetNamespace(), gw.Gateway.GetName()))
-
-	for _, ln := range gw.Listeners {
-		logListenerSummary(log, ln, "  ")
-	}
-
-	for _, lsn := range gw.ListenerSets {
-		log.Debug(fmt.Sprintf("Graph:   ListenerSet %s/%s",
-			lsn.ListenerSet.GetNamespace(), lsn.ListenerSet.GetName()))
-		for _, ln := range lsn.Listeners {
-			logListenerSummary(log, ln, "    ")
-		}
-	}
-}
 
 func logListenerSummary(log *slog.Logger, ln *ListenerNode, indent string) {
 	host := ""

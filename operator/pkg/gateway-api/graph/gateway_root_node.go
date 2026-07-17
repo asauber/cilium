@@ -4,11 +4,16 @@
 package graph
 
 import (
+	"context"
+	"fmt"
+	"log/slog"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
+	"github.com/cilium/cilium/operator/pkg/model/ingestion"
 )
 
 func BuildRoot(gateway *gatewayv1.Gateway, gatewayClass *gatewayv1.GatewayClass) *GatewayRootNode {
@@ -20,6 +25,184 @@ func BuildRoot(gateway *gatewayv1.Gateway, gatewayClass *gatewayv1.GatewayClass)
 	}
 	root.addGatewayListeners()
 	return root
+}
+
+func (root *GatewayRootNode) DebugLog(ctx context.Context, log *slog.Logger) {
+	if !log.Enabled(ctx, slog.LevelDebug) {
+		return
+	}
+	gw := root.GatewayClass.Gateway
+	log.Debug(fmt.Sprintf("Graph: Gateway %s/%s", gw.Gateway.GetNamespace(), gw.Gateway.GetName()))
+	for _, ln := range gw.Listeners {
+		logListenerSummary(log, ln, "  ")
+	}
+	for _, lsn := range gw.ListenerSets {
+		log.Debug(fmt.Sprintf("Graph:   ListenerSet %s/%s", lsn.ListenerSet.GetNamespace(), lsn.ListenerSet.GetName()))
+		for _, ln := range lsn.Listeners {
+			logListenerSummary(log, ln, "    ")
+		}
+	}
+}
+
+func (root *GatewayRootNode) BuildValidatedListeners() []ingestion.ValidatedListener {
+	listeners := root.validListeners()
+	hostnamesByProtocol := listenerHostnamesByProtocol(listeners)
+	validated := make([]ingestion.ValidatedListener, 0, len(listeners))
+	for _, listener := range listeners {
+		validated = append(validated, ingestion.ValidatedListener{
+			Listener: listener.Listener, Source: listenerSource(listener),
+			HTTPRoutes: acceptedHTTPRoutes(listener, hostnamesByProtocol),
+			GRPCRoutes: acceptedGRPCRoutes(listener, hostnamesByProtocol),
+			TLSRoutes:  acceptedTLSRoutes(listener, hostnamesByProtocol),
+			TCPRoutes:  acceptedTCPRoutes(listener), UDPRoutes: acceptedUDPRoutes(listener),
+		})
+	}
+	return validated
+}
+
+func (root *GatewayRootNode) validListeners() []*ListenerNode {
+	listeners := root.allListeners()
+	valid := listeners[:0]
+	for _, listener := range listeners {
+		if listener.Valid {
+			valid = append(valid, listener)
+		}
+	}
+	return valid
+}
+
+func (root *GatewayRootNode) allListeners() []*ListenerNode {
+	gw := root.GatewayClass.Gateway
+	listeners := make([]*ListenerNode, 0, len(gw.Listeners))
+	listeners = append(listeners, gw.Listeners...)
+	for _, listenerSet := range gw.ListenerSets {
+		listeners = append(listeners, listenerSet.Listeners...)
+	}
+	return listeners
+}
+
+func (root *GatewayRootNode) AggregateAttachedRoutes() {
+	listeners := root.allListeners()
+	hostnamesByProtocol := listenerHostnamesByProtocol(listeners)
+	for _, listener := range listeners {
+		listener.AggregateAttachedRoutes(hostnamesByProtocol)
+	}
+}
+
+func (root *GatewayRootNode) ValidateListeners() {
+	gw := root.GatewayClass.Gateway
+	referenceGrants := referenceGrantValues(gw.ReferenceGrants)
+	gatewayListeners := make([]gatewayv1.Listener, 0, len(gw.Listeners))
+	for _, ln := range gw.Listeners {
+		gatewayListeners = append(gatewayListeners, ln.Listener)
+	}
+	conflicts := listenerConflicts(gatewayListeners, true)
+	for _, ln := range gw.Listeners {
+		validateListenerNode(ln, gw.Gateway.GetGeneration(), gw.Gateway.GetNamespace(), "Gateway", referenceGrants, gw.TLSSecrets, conflicts, false)
+	}
+	accepted := []gatewayv1.Listener{}
+	for _, ln := range gw.Listeners {
+		if ln.Valid {
+			accepted = append(accepted, ln.Listener)
+		}
+	}
+	for _, lsn := range gw.ListenerSets {
+		if !lsn.Allowed {
+			for _, ln := range lsn.Listeners {
+				ln.Valid = false
+			}
+			continue
+		}
+		for _, ln := range lsn.Listeners {
+			lsConflicts := listenerConflicts(append(accepted, ln.Listener), false)
+			validateListenerNode(ln, lsn.ListenerSet.GetGeneration(), lsn.ListenerSet.GetNamespace(), "ListenerSet", referenceGrants, gw.TLSSecrets, lsConflicts, true)
+			if ln.Valid {
+				accepted = append(accepted, ln.Listener)
+			}
+		}
+	}
+}
+
+func (root *GatewayRootNode) ValidateAllowedListenerSets() {
+	gw := root.GatewayClass.Gateway
+	for _, lsn := range gw.ListenerSets {
+		lsn.Allowed = gatewayAllowsListenerSet(*gw.Gateway, *lsn.ListenerSet, gw.Namespaces)
+	}
+}
+
+func (root *GatewayRootNode) SetListenerSetStatuses() {
+	gw := root.GatewayClass.Gateway
+	gw.Gateway.Status.AttachedListenerSets = nil
+
+	var validAttachedCount int32
+	for _, listenerSetNode := range gw.ListenerSets {
+		listenerSet := listenerSetNode.ListenerSet
+		if !listenerSetNode.Allowed {
+			listenerSet.Status.Listeners = nil
+			setListenerSetAccepted(
+				listenerSet,
+				false,
+				"ListenerSet is not allowed by the Gateway's allowedListeners policy",
+				gatewayv1.ListenerSetReasonNotAllowed,
+			)
+			setListenerSetProgrammed(
+				listenerSet,
+				false,
+				"ListenerSet is not allowed by the Gateway's allowedListeners policy",
+				gatewayv1.ListenerSetReasonNotAllowed,
+			)
+			continue
+		}
+
+		oneValidListener := false
+		listenerStatuses := make([]gatewayv1.ListenerEntryStatus, 0, len(listenerSetNode.Listeners))
+		for _, listenerNode := range listenerSetNode.Listeners {
+			if listenerNode.Valid {
+				oneValidListener = true
+			}
+			listenerStatuses = append(listenerStatuses, gatewayv1.ListenerEntryStatus{
+				Name:           listenerNode.Listener.Name,
+				SupportedKinds: listenerNode.SupportedKinds,
+				Conditions:     listenerNode.Conditions,
+				AttachedRoutes: listenerNode.AttachedRoutes,
+			})
+		}
+		listenerSet.Status.Listeners = listenerStatuses
+
+		if oneValidListener {
+			validAttachedCount++
+			setListenerSetAccepted(
+				listenerSet,
+				true,
+				"ListenerSet is accepted",
+				gatewayv1.ListenerSetReasonAccepted,
+			)
+			setListenerSetProgrammed(
+				listenerSet,
+				true,
+				"ListenerSet is programmed",
+				gatewayv1.ListenerSetReasonProgrammed,
+			)
+			continue
+		}
+
+		setListenerSetAccepted(
+			listenerSet,
+			false,
+			"No valid listeners",
+			gatewayv1.ListenerSetReasonListenersNotValid,
+		)
+		setListenerSetProgrammed(
+			listenerSet,
+			false,
+			"No valid listeners",
+			gatewayv1.ListenerSetReasonListenersNotValid,
+		)
+	}
+
+	if validAttachedCount > 0 {
+		gw.Gateway.Status.AttachedListenerSets = &validAttachedCount
+	}
 }
 
 func (root *GatewayRootNode) ValidateGatewayNode() error {
