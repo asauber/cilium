@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: listenerset-refgrant-ns
+  labels:
+    kubernetes.io/metadata.name: listenerset-refgrant-ns
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: gateway-listenerset-without-reference-grant
+  namespace: gateway-conformance-infra
+spec:
+  gatewayClassName: cilium
+  allowedListeners:
+    namespaces:
+      from: All
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: All
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: listenerset-without-reference-grant
+  namespace: listenerset-refgrant-ns
+  creationTimestamp: "2024-01-01T00:00:00Z"
+spec:
+  parentRef:
+    name: gateway-listenerset-without-reference-grant
+    namespace: gateway-conformance-infra
+  listeners:
+    - name: listenerset-without-reference-grant-listener
+      port: 9443
+      protocol: HTTPS
+      hostname: without-grant.example.com
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: tls-passthrough-checks-certificate
+            namespace: gateway-conformance-app-backend
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: ReferenceGrant
+metadata:
+  name: reference-grant-for-gateway
+  namespace: gateway-conformance-app-backend
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      namespace: gateway-conformance-infra
+  to:
+    - group: ""
+      kind: Secret
+      name: tls-passthrough-checks-certificate
