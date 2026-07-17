@@ -8,8 +8,6 @@ import (
 	"log/slog"
 )
 
-// Extract the Graph debug messages with:
-// awk -F'msg="Graph: |" resource=' 'NF > 2 { print $2 }'
 const graphLogPrefix = "Graph: "
 
 func logListenerSetSummary(log *slog.Logger, listenerSet *ListenerSetNode, prefix string, last bool) {
