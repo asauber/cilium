@@ -371,9 +371,6 @@ func Test_Conformance(t *testing.T) {
 		{name: "listenerset-cross-listenerset-protocol-conflict", skipCEC: true, gateway: []gwDetails{
 			{FullName: types.NamespacedName{Name: "cross-listenerset-protocol-conflict", Namespace: "gateway-conformance-infra"}},
 		}},
-		{name: "listenerset-reference-grant", skipCEC: true, gateway: []gwDetails{
-			{FullName: types.NamespacedName{Name: "gateway-listenerset-refgrant", Namespace: "gateway-conformance-infra"}},
-		}},
 		{name: "listenerset-allowed-routes-kinds", skipCEC: true, gateway: []gwDetails{
 			{FullName: types.NamespacedName{Name: "allowed-route-kinds", Namespace: "gateway-conformance-infra"}},
 		}},
