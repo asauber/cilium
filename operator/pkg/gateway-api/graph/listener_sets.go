@@ -94,14 +94,9 @@ func (node *ListenerSetNode) setAccepted(
 	if !accepted {
 		status = metav1.ConditionFalse
 	}
-	listenerSet.Status.Conditions = helpers.MergeConditions(listenerSet.Status.Conditions, metav1.Condition{
-		Type:               string(gatewayv1.ListenerSetConditionAccepted),
-		Status:             status,
-		Reason:             string(reason),
-		Message:            message,
-		ObservedGeneration: listenerSet.GetGeneration(),
-		LastTransitionTime: metav1.NewTime(time.Now()),
-	})
+	listenerSet.Status.Conditions = helpers.MergeConditions(listenerSet.Status.Conditions,
+		node.condition(gatewayv1.ListenerSetConditionAccepted, status, message, reason),
+	)
 }
 
 func (node *ListenerSetNode) setProgrammed(
@@ -112,12 +107,23 @@ func (node *ListenerSetNode) setProgrammed(
 	if !programmed {
 		status = metav1.ConditionFalse
 	}
-	listenerSet.Status.Conditions = helpers.MergeConditions(listenerSet.Status.Conditions, metav1.Condition{
-		Type:               string(gatewayv1.ListenerSetConditionProgrammed),
+	listenerSet.Status.Conditions = helpers.MergeConditions(listenerSet.Status.Conditions,
+		node.condition(gatewayv1.ListenerSetConditionProgrammed, status, message, reason),
+	)
+}
+
+func (node *ListenerSetNode) condition(
+	conditionType gatewayv1.ListenerSetConditionType,
+	status metav1.ConditionStatus,
+	message string,
+	reason gatewayv1.ListenerSetConditionReason,
+) metav1.Condition {
+	return metav1.Condition{
+		Type:               string(conditionType),
 		Status:             status,
 		Reason:             string(reason),
 		Message:            message,
-		ObservedGeneration: listenerSet.GetGeneration(),
+		ObservedGeneration: node.ListenerSet.GetGeneration(),
 		LastTransitionTime: metav1.NewTime(time.Now()),
-	})
+	}
 }

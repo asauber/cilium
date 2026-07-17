@@ -70,25 +70,24 @@ func (node *ListenerNode) Validate(
 			string(gatewayv1.ListenerConditionResolvedRefs),
 		) {
 			node.Conditions = helpers.MergeConditions(node.Conditions,
-				metav1.Condition{
-					Type:               string(gatewayv1.ListenerConditionResolvedRefs),
-					Status:             metav1.ConditionTrue,
-					Reason:             string(gatewayv1.ListenerReasonResolvedRefs),
-					Message:            "Resolved Refs",
-					ObservedGeneration: generation,
-					LastTransitionTime: metav1.NewTime(time.Now()),
-				})
+				listenerResolvedRefsCond(
+					generation,
+					metav1.ConditionTrue,
+					gatewayv1.ListenerReasonResolvedRefs,
+					"Resolved Refs",
+				),
+			)
 		}
 	} else {
 		if !helpers.IsConditionPresent(node.Conditions, string(gatewayv1.ListenerConditionResolvedRefs)) {
-			node.Conditions = helpers.MergeConditions(node.Conditions, metav1.Condition{
-				Type:               string(gatewayv1.ListenerConditionResolvedRefs),
-				Status:             metav1.ConditionTrue,
-				Reason:             string(gatewayv1.ListenerReasonResolvedRefs),
-				Message:            "Resolved Refs",
-				ObservedGeneration: generation,
-				LastTransitionTime: metav1.NewTime(time.Now()),
-			})
+			node.Conditions = helpers.MergeConditions(node.Conditions,
+				listenerResolvedRefsCond(
+					generation,
+					metav1.ConditionTrue,
+					gatewayv1.ListenerReasonResolvedRefs,
+					"Resolved Refs",
+				),
+			)
 		}
 
 		programmedReason := gatewayv1.ListenerReasonPending
@@ -156,14 +155,14 @@ func (node *ListenerNode) validateTLS(
 	ownerGVK := gatewayv1.SchemeGroupVersion.WithKind(node.parentKind())
 	for _, cert := range l.TLS.CertificateRefs {
 		if !helpers.IsSecret(cert) {
-			node.Conditions = helpers.MergeConditions(node.Conditions, metav1.Condition{
-				Type:               string(gatewayv1.ListenerConditionResolvedRefs),
-				Status:             metav1.ConditionFalse,
-				Reason:             string(gatewayv1.ListenerReasonInvalidCertificateRef),
-				Message:            "Invalid CertificateRef",
-				ObservedGeneration: generation,
-				LastTransitionTime: metav1.NewTime(time.Now()),
-			})
+			node.Conditions = helpers.MergeConditions(node.Conditions,
+				listenerResolvedRefsCond(
+					generation,
+					metav1.ConditionFalse,
+					gatewayv1.ListenerReasonInvalidCertificateRef,
+					"Invalid CertificateRef",
+				),
+			)
 			node.invalidMessages = append(node.invalidMessages,
 				"Invalid CertificateRef, must be a Secret.")
 			node.Valid = false
@@ -173,14 +172,14 @@ func (node *ListenerNode) validateTLS(
 		if !helpers.IsSecretReferenceAllowed(
 			node.ParentNamespace(), cert, ownerGVK, grants,
 		) {
-			node.Conditions = helpers.MergeConditions(node.Conditions, metav1.Condition{
-				Type:               string(gatewayv1.ListenerConditionResolvedRefs),
-				Status:             metav1.ConditionFalse,
-				Reason:             string(gatewayv1.ListenerReasonRefNotPermitted),
-				Message:            "CertificateRef is not permitted",
-				ObservedGeneration: generation,
-				LastTransitionTime: metav1.NewTime(time.Now()),
-			})
+			node.Conditions = helpers.MergeConditions(node.Conditions,
+				listenerResolvedRefsCond(
+					generation,
+					metav1.ConditionFalse,
+					gatewayv1.ListenerReasonRefNotPermitted,
+					"CertificateRef is not permitted",
+				),
+			)
 			node.invalidMessages = append(node.invalidMessages,
 				"Invalid CertificateRef, not permitted.")
 			node.Valid = false
@@ -195,14 +194,14 @@ func (node *ListenerNode) validateTLS(
 			if ok && tlsSecret.Error != nil {
 				validationError = tlsSecret.Error
 			}
-			node.Conditions = helpers.MergeConditions(node.Conditions, metav1.Condition{
-				Type:               string(gatewayv1.ListenerConditionResolvedRefs),
-				Status:             metav1.ConditionFalse,
-				Reason:             string(gatewayv1.ListenerReasonInvalidCertificateRef),
-				Message:            "Invalid CertificateRef",
-				ObservedGeneration: generation,
-				LastTransitionTime: metav1.NewTime(time.Now()),
-			})
+			node.Conditions = helpers.MergeConditions(node.Conditions,
+				listenerResolvedRefsCond(
+					generation,
+					metav1.ConditionFalse,
+					gatewayv1.ListenerReasonInvalidCertificateRef,
+					"Invalid CertificateRef",
+				),
+			)
 			node.invalidMessages = append(node.invalidMessages,
 				"Invalid CertificateRef, "+validationError.Error())
 			node.Valid = false
@@ -269,6 +268,22 @@ func listenerInvalidRouteKindsCond(generation int64, msg string) metav1.Conditio
 		Type:               string(gatewayv1.ListenerConditionResolvedRefs),
 		Status:             metav1.ConditionFalse,
 		Reason:             string(gatewayv1.ListenerReasonInvalidRouteKinds),
+		Message:            msg,
+		ObservedGeneration: generation,
+		LastTransitionTime: metav1.NewTime(time.Now()),
+	}
+}
+
+func listenerResolvedRefsCond(
+	generation int64,
+	status metav1.ConditionStatus,
+	reason gatewayv1.ListenerConditionReason,
+	msg string,
+) metav1.Condition {
+	return metav1.Condition{
+		Type:               string(gatewayv1.ListenerConditionResolvedRefs),
+		Status:             status,
+		Reason:             string(reason),
 		Message:            msg,
 		ObservedGeneration: generation,
 		LastTransitionTime: metav1.NewTime(time.Now()),

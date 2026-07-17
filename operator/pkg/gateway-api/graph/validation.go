@@ -163,27 +163,29 @@ func (node *GatewayNode) SetAccepted(accepted bool, message string, reason gatew
 	if accepted {
 		status = metav1.ConditionTrue
 	}
-	node.setCondition(metav1.Condition{
-		Type:               string(gatewayv1.GatewayConditionAccepted),
-		Status:             status,
-		Reason:             string(reason),
-		Message:            message,
-		ObservedGeneration: node.Gateway.GetGeneration(),
-		LastTransitionTime: metav1.NewTime(time.Now()),
-	})
+	node.setCondition(node.condition(gatewayv1.GatewayConditionAccepted, status, message, reason))
 }
 
 func (node *GatewayNode) SetProgrammed(
 	status metav1.ConditionStatus, message string, reason gatewayv1.GatewayConditionReason,
 ) {
-	node.setCondition(metav1.Condition{
-		Type:               string(gatewayv1.GatewayConditionProgrammed),
+	node.setCondition(node.condition(gatewayv1.GatewayConditionProgrammed, status, message, reason))
+}
+
+func (node *GatewayNode) condition(
+	conditionType gatewayv1.GatewayConditionType,
+	status metav1.ConditionStatus,
+	message string,
+	reason gatewayv1.GatewayConditionReason,
+) metav1.Condition {
+	return metav1.Condition{
+		Type:               string(conditionType),
 		Status:             status,
 		Reason:             string(reason),
 		Message:            message,
 		ObservedGeneration: node.Gateway.GetGeneration(),
 		LastTransitionTime: metav1.NewTime(time.Now()),
-	})
+	}
 }
 
 func (node *GatewayNode) setCondition(update metav1.Condition) {
