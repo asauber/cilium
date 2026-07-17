@@ -47,29 +47,6 @@ spec:
             namespace: gateway-conformance-app-backend
 ---
 apiVersion: gateway.networking.k8s.io/v1
-kind: ListenerSet
-metadata:
-  name: listenerset-without-reference-grant
-  namespace: listenerset-refgrant-ns
-  creationTimestamp: "2024-01-01T00:00:00Z"
-spec:
-  parentRef:
-    name: gateway-listenerset-refgrant
-    namespace: gateway-conformance-infra
-  listeners:
-    - name: listenerset-without-reference-grant-listener
-      port: 9443
-      protocol: HTTPS
-      hostname: without-grant.example.com
-      tls:
-        mode: Terminate
-        certificateRefs:
-          - group: ""
-            kind: Secret
-            name: tls-passthrough-checks-certificate
-            namespace: gateway-conformance-app-backend
----
-apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: reference-grant-for-listenerset
