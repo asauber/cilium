@@ -166,7 +166,7 @@ func (node *ListenerNode) TargetedByParentRefs(parentRefs []gatewayv1.ParentRefe
 		if ref.Namespace != nil {
 			namespace = string(*ref.Namespace)
 		}
-		if namespace != node.parentNamespace() || (ref.SectionName != nil && *ref.SectionName != node.Listener.Name) || (ref.Port != nil && *ref.Port != node.Listener.Port) {
+		if namespace != node.ParentNamespace() || (ref.SectionName != nil && *ref.SectionName != node.Listener.Name) || (ref.Port != nil && *ref.Port != node.Listener.Port) {
 			continue
 		}
 		return true
@@ -180,16 +180,17 @@ func (node *ListenerNode) parentKind() string {
 	}
 	return "ListenerSet"
 }
+
 func (node *ListenerNode) parentName() string {
 	if node.Gateway != nil {
 		return node.Gateway.GetName()
 	}
 	return node.ListenerSet.GetName()
 }
-func (node *ListenerNode) parentNamespace() string {
+
+func (node *ListenerNode) ParentNamespace() string {
 	if node.Gateway != nil {
 		return node.Gateway.GetNamespace()
 	}
 	return node.ListenerSet.GetNamespace()
 }
-func (node *ListenerNode) OwnerNamespace() string { return node.parentNamespace() }
