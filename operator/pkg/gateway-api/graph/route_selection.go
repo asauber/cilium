@@ -87,7 +87,7 @@ func (node *ListenerNode) routeAccepted(routeNamespace string, parents []gateway
 	}
 
 	for _, parent := range parents {
-		if !node.ParentRefsTarget([]gatewayv1.ParentReference{parent.ParentRef}, routeNamespace) {
+		if !node.TargetedByParentRefs([]gatewayv1.ParentReference{parent.ParentRef}, routeNamespace) {
 			continue
 		}
 		for _, condition := range parent.Conditions {
@@ -123,37 +123,37 @@ func (node *ListenerNode) AddRoutes(
 ) {
 	for index := range httpRoutes.Items {
 		route := &httpRoutes.Items[index]
-		if node.ParentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
+		if node.TargetedByParentRefs(route.Spec.ParentRefs, route.GetNamespace()) {
 			node.HTTPRoutes = append(node.HTTPRoutes, &HTTPRouteNode{Route: route})
 		}
 	}
 	for index := range grpcRoutes.Items {
 		route := &grpcRoutes.Items[index]
-		if node.ParentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
+		if node.TargetedByParentRefs(route.Spec.ParentRefs, route.GetNamespace()) {
 			node.GRPCRoutes = append(node.GRPCRoutes, &GRPCRouteNode{Route: route})
 		}
 	}
 	for index := range tlsRoutes.Items {
 		route := &tlsRoutes.Items[index]
-		if node.ParentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
+		if node.TargetedByParentRefs(route.Spec.ParentRefs, route.GetNamespace()) {
 			node.TLSRoutes = append(node.TLSRoutes, &TLSRouteNode{Route: route})
 		}
 	}
 	for index := range tcpRoutes.Items {
 		route := &tcpRoutes.Items[index]
-		if node.ParentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
+		if node.TargetedByParentRefs(route.Spec.ParentRefs, route.GetNamespace()) {
 			node.TCPRoutes = append(node.TCPRoutes, &TCPRouteNode{Route: route})
 		}
 	}
 	for index := range udpRoutes.Items {
 		route := &udpRoutes.Items[index]
-		if node.ParentRefsTarget(route.Spec.ParentRefs, route.GetNamespace()) {
+		if node.TargetedByParentRefs(route.Spec.ParentRefs, route.GetNamespace()) {
 			node.UDPRoutes = append(node.UDPRoutes, &UDPRouteNode{Route: route})
 		}
 	}
 }
 
-func (node *ListenerNode) ParentRefsTarget(parentRefs []gatewayv1.ParentReference, routeNamespace string) bool {
+func (node *ListenerNode) TargetedByParentRefs(parentRefs []gatewayv1.ParentReference, routeNamespace string) bool {
 	for _, ref := range parentRefs {
 		kind := "Gateway"
 		if ref.Kind != nil {
