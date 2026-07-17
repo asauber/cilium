@@ -11,7 +11,7 @@ import (
 )
 
 func (root *GatewayRootNode) AggregateAttachedRoutes() {
-	listeners := root.validListeners()
+	listeners := root.allListeners()
 	hostnamesByProtocol := listenerHostnamesByProtocol(listeners)
 	for _, listener := range listeners {
 		listener.AggregateAttachedRoutes(hostnamesByProtocol)

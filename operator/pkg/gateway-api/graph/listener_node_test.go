@@ -119,3 +119,39 @@ func TestGatewayRootNodeAggregateAttachedRoutes(t *testing.T) {
 
 	assert.Equal(t, int32(1), root.GatewayClass.Gateway.Listeners[0].AttachedRoutes)
 }
+
+func TestGatewayRootNodeAggregateAttachedRoutesForInvalidListener(t *testing.T) {
+	parent := gatewayv1.ParentReference{Name: "gateway"}
+	gateway := &gatewayv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{Name: "gateway", Namespace: "default"},
+		Spec: gatewayv1.GatewaySpec{Listeners: []gatewayv1.Listener{{
+			Name:     "https",
+			Port:     443,
+			Protocol: gatewayv1.HTTPSProtocolType,
+		}}},
+	}
+	routes := &gatewayv1.HTTPRouteList{Items: []gatewayv1.HTTPRoute{{
+		ObjectMeta: metav1.ObjectMeta{Name: "accepted", Namespace: "default"},
+		Spec: gatewayv1.HTTPRouteSpec{CommonRouteSpec: gatewayv1.CommonRouteSpec{
+			ParentRefs: []gatewayv1.ParentReference{parent},
+		}},
+		Status: gatewayv1.HTTPRouteStatus{RouteStatus: gatewayv1.RouteStatus{Parents: []gatewayv1.RouteParentStatus{{
+			ParentRef: parent,
+			Conditions: []metav1.Condition{{
+				Type:   string(gatewayv1.RouteConditionAccepted),
+				Status: metav1.ConditionTrue,
+			}},
+		}}}},
+	}}}
+	root := BuildRoot(gateway, &gatewayv1.GatewayClass{})
+	root.AddRoutes(routes, &gatewayv1.GRPCRouteList{}, &gatewayv1.TLSRouteList{},
+		&gatewayv1.TCPRouteList{}, &gatewayv1.UDPRouteList{})
+	listener := root.GatewayClass.Gateway.Listeners[0]
+	listener.Valid = false
+	listener.SupportedKinds = []gatewayv1.RouteGroupKind{{Kind: "HTTPRoute"}}
+
+	root.AggregateAttachedRoutes()
+
+	assert.Equal(t, int32(1), listener.AttachedRoutes)
+	assert.Empty(t, root.BuildValidatedListeners())
+}

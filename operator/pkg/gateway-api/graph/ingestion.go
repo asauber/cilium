@@ -29,22 +29,22 @@ func (root *GatewayRootNode) BuildValidatedListeners() []ingestion.ValidatedList
 }
 
 func (root *GatewayRootNode) validListeners() []*ListenerNode {
-	gw := root.GatewayClass.Gateway
-	listeners := make([]*ListenerNode, 0, len(gw.Listeners))
-	for _, listener := range gw.Listeners {
+	listeners := root.allListeners()
+	valid := listeners[:0]
+	for _, listener := range listeners {
 		if listener.Valid {
-			listeners = append(listeners, listener)
+			valid = append(valid, listener)
 		}
 	}
+	return valid
+}
+
+func (root *GatewayRootNode) allListeners() []*ListenerNode {
+	gw := root.GatewayClass.Gateway
+	listeners := make([]*ListenerNode, 0, len(gw.Listeners))
+	listeners = append(listeners, gw.Listeners...)
 	for _, listenerSet := range gw.ListenerSets {
-		if !listenerSet.Allowed {
-			continue
-		}
-		for _, listener := range listenerSet.Listeners {
-			if listener.Valid {
-				listeners = append(listeners, listener)
-			}
-		}
+		listeners = append(listeners, listenerSet.Listeners...)
 	}
 	return listeners
 }
