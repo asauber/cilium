@@ -27,70 +27,6 @@ func BuildRoot(gateway *gatewayv1.Gateway, gatewayClass *gatewayv1.GatewayClass)
 	return root
 }
 
-func (root *GatewayRootNode) DebugLog(ctx context.Context, log *slog.Logger) {
-	if !log.Enabled(ctx, slog.LevelDebug) {
-		return
-	}
-	gw := root.GatewayClass.Gateway
-	log.Debug(fmt.Sprintf(graphLogPrefix+"Gateway %s/%s", gw.Gateway.GetNamespace(), gw.Gateway.GetName()))
-	childCount := len(gw.Listeners) + len(gw.ListenerSets)
-	childIndex := 0
-	for _, ln := range gw.Listeners {
-		logListenerSummary(log, ln, "", childIndex == childCount-1)
-		childIndex++
-	}
-	for _, lsn := range gw.ListenerSets {
-		logListenerSetSummary(log, lsn, "", childIndex == childCount-1)
-		childIndex++
-	}
-}
-
-func (root *GatewayRootNode) ValidateListeners() {
-	gw := root.GatewayClass.Gateway
-	referenceGrants := referenceGrantValues(gw.ReferenceGrants)
-	gatewayListeners := make([]gatewayv1.Listener, 0, len(gw.Listeners))
-	for _, ln := range gw.Listeners {
-		gatewayListeners = append(gatewayListeners, ln.Listener)
-	}
-	conflicts := listenerConflicts(gatewayListeners, true)
-	for _, ln := range gw.Listeners {
-		ln.Validate(referenceGrants, gw.TLSSecrets, conflicts)
-	}
-	accepted := []gatewayv1.Listener{}
-	for _, ln := range gw.Listeners {
-		if ln.Valid {
-			accepted = append(accepted, ln.Listener)
-		}
-	}
-	for _, lsn := range gw.ListenerSets {
-		if !lsn.Allowed {
-			for _, ln := range lsn.Listeners {
-				ln.Valid = false
-			}
-			continue
-		}
-		for _, ln := range lsn.Listeners {
-			lsConflicts := listenerConflicts(append(accepted, ln.Listener), false)
-			ln.Validate(referenceGrants, gw.TLSSecrets, lsConflicts)
-			if ln.Valid {
-				accepted = append(accepted, ln.Listener)
-			}
-		}
-	}
-}
-
-func (root *GatewayRootNode) ValidateGatewayNode() error {
-	return root.GatewayClass.Gateway.Validate()
-}
-
-func (root *GatewayRootNode) ValidateGatewayClassNode() error {
-	return root.GatewayClass.Validate()
-}
-
-func (root *GatewayRootNode) GetGateway() *gatewayv1.Gateway {
-	return root.GatewayClass.Gateway.Gateway
-}
-
 func (root *GatewayRootNode) AddListenerSets(listenerSets *gatewayv1.ListenerSetList) {
 	for index := range listenerSets.Items {
 		listenerSet := &listenerSets.Items[index]
@@ -150,46 +86,26 @@ func (root *GatewayRootNode) AddTLSSecrets(validations map[types.NamespacedName]
 	root.GatewayClass.Gateway.TLSSecrets = tlsSecrets
 }
 
-func (root *GatewayRootNode) HasNamespaceLabelSelector() bool {
-	if root.GatewayClass.Gateway.Gateway.Spec.AllowedListeners != nil &&
-		root.GatewayClass.Gateway.Gateway.Spec.AllowedListeners.Namespaces != nil &&
-		root.GatewayClass.Gateway.Gateway.Spec.AllowedListeners.Namespaces.From != nil &&
-		*root.GatewayClass.Gateway.Gateway.Spec.AllowedListeners.Namespaces.From == gatewayv1.NamespacesFromSelector {
-		return true
-	}
-
-	if hasNamespaceLabelSelector(root.GatewayClass.Gateway.Gateway.Spec.Listeners) {
-		return true
-	}
-
-	for _, listenerSet := range root.GatewayClass.Gateway.ListenerSets {
-		listeners := make([]gatewayv1.Listener, 0, len(listenerSet.ListenerSet.Spec.Listeners))
-		for _, entry := range listenerSet.ListenerSet.Spec.Listeners {
-			listeners = append(listeners, helpers.ListenerEntryToListener(entry))
-		}
-		if hasNamespaceLabelSelector(listeners) {
-			return true
-		}
-	}
-
-	return false
+func (root *GatewayRootNode) GetGateway() *gatewayv1.Gateway {
+	return root.GatewayClass.Gateway.Gateway
 }
 
-func hasNamespaceLabelSelector(listeners []gatewayv1.Listener) bool {
-	for _, listener := range listeners {
-		if listener.AllowedRoutes == nil || listener.AllowedRoutes.Namespaces == nil {
-			continue
-		}
-		if listener.AllowedRoutes.Namespaces.From != nil &&
-			*listener.AllowedRoutes.Namespaces.From == gatewayv1.NamespacesFromSelector {
-			return true
-		}
-		if listener.AllowedRoutes.Namespaces.From == nil && listener.AllowedRoutes.Namespaces.Selector != nil {
-			return true
-		}
+func (root *GatewayRootNode) DebugLog(ctx context.Context, log *slog.Logger) {
+	if !log.Enabled(ctx, slog.LevelDebug) {
+		return
 	}
-
-	return false
+	gateway := root.GatewayClass.Gateway
+	log.Debug(fmt.Sprintf(graphLogPrefix+"Gateway %s/%s", gateway.Gateway.GetNamespace(), gateway.Gateway.GetName()))
+	childCount := len(gateway.Listeners) + len(gateway.ListenerSets)
+	childIndex := 0
+	for _, listener := range gateway.Listeners {
+		logListenerSummary(log, listener, "", childIndex == childCount-1)
+		childIndex++
+	}
+	for _, listenerSet := range gateway.ListenerSets {
+		logListenerSetSummary(log, listenerSet, "", childIndex == childCount-1)
+		childIndex++
+	}
 }
 
 func (root *GatewayRootNode) addGatewayListeners() {
@@ -216,12 +132,4 @@ func (node *GatewayNode) SortListenerSets() {
 		rightName := right.GetNamespace() + "/" + right.GetName()
 		return leftName < rightName
 	})
-}
-
-func referenceGrantValues(grants []*gatewayv1.ReferenceGrant) []gatewayv1.ReferenceGrant {
-	values := make([]gatewayv1.ReferenceGrant, len(grants))
-	for index, grant := range grants {
-		values[index] = *grant
-	}
-	return values
 }
