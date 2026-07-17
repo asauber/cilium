@@ -1,0 +1,59 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  creationTimestamp: "2024-01-02T00:00:00Z"
+  name: listenerset-with-reference-grant
+  namespace: gateway-conformance-infra
+  resourceVersion: "999"
+spec:
+  listeners:
+  - hostname: with-grant.example.com
+    name: listenerset-with-reference-grant-listener
+    port: 8443
+    protocol: HTTPS
+    tls:
+      certificateRefs:
+      - group: ""
+        kind: Secret
+        name: tls-passthrough-checks-certificate
+        namespace: gateway-conformance-app-backend
+      mode: Terminate
+  parentRef:
+    name: gateway-listenerset-with-reference-grant
+    namespace: gateway-conformance-infra
+status:
+  conditions:
+  - lastTransitionTime: "2025-07-01T00:00:00Z"
+    message: ListenerSet is accepted
+    reason: Accepted
+    status: "True"
+    type: Accepted
+  - lastTransitionTime: "2025-07-01T00:00:00Z"
+    message: ListenerSet is programmed
+    reason: Programmed
+    status: "True"
+    type: Programmed
+  listeners:
+  - attachedRoutes: 0
+    conditions:
+    - lastTransitionTime: "2025-07-01T00:00:00Z"
+      message: Resolved Refs
+      reason: ResolvedRefs
+      status: "True"
+      type: ResolvedRefs
+    - lastTransitionTime: "2025-07-01T00:00:00Z"
+      message: Listener Accepted
+      reason: Accepted
+      status: "True"
+      type: Accepted
+    - lastTransitionTime: "2025-07-01T00:00:00Z"
+      message: Listener Programmed
+      reason: Programmed
+      status: "True"
+      type: Programmed
+    name: listenerset-with-reference-grant-listener
+    supportedKinds:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+    - group: gateway.networking.k8s.io
+      kind: GRPCRoute
