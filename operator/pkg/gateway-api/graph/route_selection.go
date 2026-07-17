@@ -13,7 +13,7 @@ import (
 
 func (root *GatewayRootNode) AggregateAttachedRoutes() {
 	listeners := root.allListeners()
-	hostnamesByProtocol := listenerHostnamesByProtocol(listeners)
+	hostnamesByProtocol := root.listenerHostnamesByProtocol(listeners)
 	for _, listener := range listeners {
 		listener.AggregateAttachedRoutes(hostnamesByProtocol)
 	}
@@ -35,11 +35,11 @@ func (root *GatewayRootNode) PopulateAllowedRouteNamespaces() {
 
 func (node *ListenerNode) AggregateAttachedRoutes(hostnamesByProtocol map[gatewayv1.ProtocolType][]string) {
 	node.AttachedRoutes = int32(
-		len(acceptedHTTPRoutes(node, hostnamesByProtocol)) +
-			len(acceptedGRPCRoutes(node, hostnamesByProtocol)) +
-			len(acceptedTLSRoutes(node, hostnamesByProtocol)) +
-			len(acceptedTCPRoutes(node)) +
-			len(acceptedUDPRoutes(node)),
+		len(node.acceptedHTTPRoutes(hostnamesByProtocol)) +
+			len(node.acceptedGRPCRoutes(hostnamesByProtocol)) +
+			len(node.acceptedTLSRoutes(hostnamesByProtocol)) +
+			len(node.acceptedTCPRoutes()) +
+			len(node.acceptedUDPRoutes()),
 	)
 }
 

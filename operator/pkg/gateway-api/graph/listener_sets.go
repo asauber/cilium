@@ -6,7 +6,6 @@ package graph
 import (
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -14,13 +13,12 @@ import (
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
 )
 
-func gatewayAllowsListenerSet(
-	gw gatewayv1.Gateway, ls gatewayv1.ListenerSet, namespaces []*corev1.Namespace,
-) bool {
-	if gw.Spec.AllowedListeners == nil {
+func (root *GatewayRootNode) allowsListenerSet(listenerSet *ListenerSetNode) bool {
+	gateway := root.GatewayClass.Gateway
+	if gateway.Gateway.Spec.AllowedListeners == nil {
 		return false
 	}
-	ns := gw.Spec.AllowedListeners.Namespaces
+	ns := gateway.Gateway.Spec.AllowedListeners.Namespaces
 	if ns == nil || ns.From == nil {
 		return false
 	}
@@ -30,14 +28,14 @@ func gatewayAllowsListenerSet(
 	case gatewayv1.NamespacesFromAll:
 		return true
 	case gatewayv1.NamespacesFromSame:
-		return ls.GetNamespace() == gw.GetNamespace()
+		return listenerSet.ListenerSet.GetNamespace() == gateway.Gateway.GetNamespace()
 	case gatewayv1.NamespacesFromSelector:
 		selector, err := metav1.LabelSelectorAsSelector(ns.Selector)
 		if err != nil {
 			return false
 		}
-		for _, n := range namespaces {
-			if n.Name == ls.GetNamespace() && selector.Matches(labels.Set(n.Labels)) {
+		for _, namespace := range gateway.Namespaces {
+			if namespace.Name == listenerSet.ListenerSet.GetNamespace() && selector.Matches(labels.Set(namespace.Labels)) {
 				return true
 			}
 		}
@@ -48,7 +46,7 @@ func gatewayAllowsListenerSet(
 func (root *GatewayRootNode) ValidateAllowedListenerSets() {
 	gw := root.GatewayClass.Gateway
 	for _, listenerSet := range gw.ListenerSets {
-		listenerSet.Allowed = gatewayAllowsListenerSet(*gw.Gateway, *listenerSet.ListenerSet, gw.Namespaces)
+		listenerSet.Allowed = root.allowsListenerSet(listenerSet)
 	}
 }
 
@@ -61,8 +59,8 @@ func (root *GatewayRootNode) SetListenerSetStatuses() {
 		listenerSet := node.ListenerSet
 		if !node.Allowed {
 			listenerSet.Status.Listeners = nil
-			setListenerSetAccepted(listenerSet, false, "ListenerSet is not allowed by the Gateway's allowedListeners policy", gatewayv1.ListenerSetReasonNotAllowed)
-			setListenerSetProgrammed(listenerSet, false, "ListenerSet is not allowed by the Gateway's allowedListeners policy", gatewayv1.ListenerSetReasonNotAllowed)
+			node.setAccepted(false, "ListenerSet is not allowed by the Gateway's allowedListeners policy", gatewayv1.ListenerSetReasonNotAllowed)
+			node.setProgrammed(false, "ListenerSet is not allowed by the Gateway's allowedListeners policy", gatewayv1.ListenerSetReasonNotAllowed)
 			continue
 		}
 
@@ -76,21 +74,22 @@ func (root *GatewayRootNode) SetListenerSetStatuses() {
 
 		if oneValidListener {
 			validAttachedCount++
-			setListenerSetAccepted(listenerSet, true, "ListenerSet is accepted", gatewayv1.ListenerSetReasonAccepted)
-			setListenerSetProgrammed(listenerSet, true, "ListenerSet is programmed", gatewayv1.ListenerSetReasonProgrammed)
+			node.setAccepted(true, "ListenerSet is accepted", gatewayv1.ListenerSetReasonAccepted)
+			node.setProgrammed(true, "ListenerSet is programmed", gatewayv1.ListenerSetReasonProgrammed)
 			continue
 		}
-		setListenerSetAccepted(listenerSet, false, "No valid listeners", gatewayv1.ListenerSetReasonListenersNotValid)
-		setListenerSetProgrammed(listenerSet, false, "No valid listeners", gatewayv1.ListenerSetReasonListenersNotValid)
+		node.setAccepted(false, "No valid listeners", gatewayv1.ListenerSetReasonListenersNotValid)
+		node.setProgrammed(false, "No valid listeners", gatewayv1.ListenerSetReasonListenersNotValid)
 	}
 	if validAttachedCount > 0 {
 		gw.Gateway.Status.AttachedListenerSets = &validAttachedCount
 	}
 }
 
-func setListenerSetAccepted(
-	listenerSet *gatewayv1.ListenerSet, accepted bool, message string, reason gatewayv1.ListenerSetConditionReason,
+func (node *ListenerSetNode) setAccepted(
+	accepted bool, message string, reason gatewayv1.ListenerSetConditionReason,
 ) {
+	listenerSet := node.ListenerSet
 	status := metav1.ConditionTrue
 	if !accepted {
 		status = metav1.ConditionFalse
@@ -105,9 +104,10 @@ func setListenerSetAccepted(
 	})
 }
 
-func setListenerSetProgrammed(
-	listenerSet *gatewayv1.ListenerSet, programmed bool, message string, reason gatewayv1.ListenerSetConditionReason,
+func (node *ListenerSetNode) setProgrammed(
+	programmed bool, message string, reason gatewayv1.ListenerSetConditionReason,
 ) {
+	listenerSet := node.ListenerSet
 	status := metav1.ConditionTrue
 	if !programmed {
 		status = metav1.ConditionFalse

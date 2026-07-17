@@ -37,15 +37,15 @@ type ValidatedListener struct {
 
 func (root *GatewayRootNode) BuildValidatedListeners() []ValidatedListener {
 	listeners := root.validListeners()
-	hostnamesByProtocol := listenerHostnamesByProtocol(listeners)
+	hostnamesByProtocol := root.listenerHostnamesByProtocol(listeners)
 	validated := make([]ValidatedListener, 0, len(listeners))
 	for _, listener := range listeners {
 		validated = append(validated, ValidatedListener{
-			Listener: listener.Listener, Source: listenerSource(listener),
-			HTTPRoutes: acceptedHTTPRoutes(listener, hostnamesByProtocol),
-			GRPCRoutes: acceptedGRPCRoutes(listener, hostnamesByProtocol),
-			TLSRoutes:  acceptedTLSRoutes(listener, hostnamesByProtocol),
-			TCPRoutes:  acceptedTCPRoutes(listener), UDPRoutes: acceptedUDPRoutes(listener),
+			Listener: listener.Listener, Source: listener.source(),
+			HTTPRoutes: listener.acceptedHTTPRoutes(hostnamesByProtocol),
+			GRPCRoutes: listener.acceptedGRPCRoutes(hostnamesByProtocol),
+			TLSRoutes:  listener.acceptedTLSRoutes(hostnamesByProtocol),
+			TCPRoutes:  listener.acceptedTCPRoutes(), UDPRoutes: listener.acceptedUDPRoutes(),
 		})
 	}
 	return validated
@@ -72,7 +72,7 @@ func (root *GatewayRootNode) allListeners() []*ListenerNode {
 	return listeners
 }
 
-func listenerHostnamesByProtocol(listeners []*ListenerNode) map[gatewayv1.ProtocolType][]string {
+func (root *GatewayRootNode) listenerHostnamesByProtocol(listeners []*ListenerNode) map[gatewayv1.ProtocolType][]string {
 	hostnames := make(map[gatewayv1.ProtocolType][]string)
 	for _, listener := range listeners {
 		if listener.Listener.Hostname != nil {
@@ -83,82 +83,82 @@ func listenerHostnamesByProtocol(listeners []*ListenerNode) map[gatewayv1.Protoc
 	return hostnames
 }
 
-func acceptedHTTPRoutes(
-	listener *ListenerNode, hostnamesByProtocol map[gatewayv1.ProtocolType][]string,
+func (node *ListenerNode) acceptedHTTPRoutes(
+	hostnamesByProtocol map[gatewayv1.ProtocolType][]string,
 ) []ValidatedHTTPRoute {
 	var routes []ValidatedHTTPRoute
-	for _, route := range listener.HTTPRoutes {
-		if hostnames, accepted := listener.httpRouteAccepted(route, hostnamesByProtocol[listener.Listener.Protocol]); accepted {
+	for _, route := range node.HTTPRoutes {
+		if hostnames, accepted := node.httpRouteAccepted(route, hostnamesByProtocol[node.Listener.Protocol]); accepted {
 			routes = append(routes, ValidatedHTTPRoute{Route: *route.Route, Hostnames: hostnames})
 		}
 	}
 	return routes
 }
 
-func acceptedGRPCRoutes(
-	listener *ListenerNode, hostnamesByProtocol map[gatewayv1.ProtocolType][]string,
+func (node *ListenerNode) acceptedGRPCRoutes(
+	hostnamesByProtocol map[gatewayv1.ProtocolType][]string,
 ) []ValidatedGRPCRoute {
 	var routes []ValidatedGRPCRoute
-	for _, route := range listener.GRPCRoutes {
-		if hostnames, accepted := listener.grpcRouteAccepted(route, hostnamesByProtocol[listener.Listener.Protocol]); accepted {
+	for _, route := range node.GRPCRoutes {
+		if hostnames, accepted := node.grpcRouteAccepted(route, hostnamesByProtocol[node.Listener.Protocol]); accepted {
 			routes = append(routes, ValidatedGRPCRoute{Route: *route.Route, Hostnames: hostnames})
 		}
 	}
 	return routes
 }
 
-func acceptedTLSRoutes(
-	listener *ListenerNode, hostnamesByProtocol map[gatewayv1.ProtocolType][]string,
+func (node *ListenerNode) acceptedTLSRoutes(
+	hostnamesByProtocol map[gatewayv1.ProtocolType][]string,
 ) []ValidatedTLSRoute {
 	var routes []ValidatedTLSRoute
-	for _, route := range listener.TLSRoutes {
-		if hostnames, accepted := listener.tlsRouteAccepted(route, hostnamesByProtocol[listener.Listener.Protocol]); accepted {
+	for _, route := range node.TLSRoutes {
+		if hostnames, accepted := node.tlsRouteAccepted(route, hostnamesByProtocol[node.Listener.Protocol]); accepted {
 			routes = append(routes, ValidatedTLSRoute{Route: *route.Route, Hostnames: hostnames})
 		}
 	}
 	return routes
 }
 
-func acceptedTCPRoutes(listener *ListenerNode) []gatewayv1.TCPRoute {
+func (node *ListenerNode) acceptedTCPRoutes() []gatewayv1.TCPRoute {
 	var routes []gatewayv1.TCPRoute
-	for _, route := range listener.TCPRoutes {
-		if listener.supportsRouteKind("TCPRoute") &&
-			listener.routeAccepted(route.Route.GetNamespace(), route.Route.Status.Parents) {
+	for _, route := range node.TCPRoutes {
+		if node.supportsRouteKind("TCPRoute") &&
+			node.routeAccepted(route.Route.GetNamespace(), route.Route.Status.Parents) {
 			routes = append(routes, *route.Route)
 		}
 	}
 	return routes
 }
 
-func acceptedUDPRoutes(listener *ListenerNode) []gatewayv1.UDPRoute {
+func (node *ListenerNode) acceptedUDPRoutes() []gatewayv1.UDPRoute {
 	var routes []gatewayv1.UDPRoute
-	for _, route := range listener.UDPRoutes {
-		if listener.supportsRouteKind("UDPRoute") &&
-			listener.routeAccepted(route.Route.GetNamespace(), route.Route.Status.Parents) {
+	for _, route := range node.UDPRoutes {
+		if node.supportsRouteKind("UDPRoute") &&
+			node.routeAccepted(route.Route.GetNamespace(), route.Route.Status.Parents) {
 			routes = append(routes, *route.Route)
 		}
 	}
 	return routes
 }
 
-func listenerSource(listener *ListenerNode) model.FullyQualifiedResource {
-	if listener.Gateway != nil {
+func (node *ListenerNode) source() model.FullyQualifiedResource {
+	if node.Gateway != nil {
 		return model.FullyQualifiedResource{
-			Name:      listener.Gateway.GetName(),
-			Namespace: listener.Gateway.GetNamespace(),
+			Name:      node.Gateway.GetName(),
+			Namespace: node.Gateway.GetNamespace(),
 			Group:     gatewayv1.SchemeGroupVersion.Group,
 			Version:   gatewayv1.SchemeGroupVersion.Version,
 			Kind:      "Gateway",
-			UID:       string(listener.Gateway.GetUID()),
+			UID:       string(node.Gateway.GetUID()),
 		}
 	}
 
 	return model.FullyQualifiedResource{
-		Name:      listener.ListenerSet.GetName(),
-		Namespace: listener.ListenerSet.GetNamespace(),
+		Name:      node.ListenerSet.GetName(),
+		Namespace: node.ListenerSet.GetNamespace(),
 		Group:     gatewayv1.SchemeGroupVersion.Group,
 		Version:   gatewayv1.SchemeGroupVersion.Version,
 		Kind:      "ListenerSet",
-		UID:       string(listener.ListenerSet.GetUID()),
+		UID:       string(node.ListenerSet.GetUID()),
 	}
 }

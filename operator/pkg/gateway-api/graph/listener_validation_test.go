@@ -183,7 +183,7 @@ func l4Listener(name string, protocol gatewayv1.ProtocolType, port gatewayv1.Por
 	return &gatewayv1.Listener{Name: gatewayv1.SectionName(name), Protocol: protocol, Port: port}
 }
 
-func Test_gatewayAllowsListenerSet(t *testing.T) {
+func TestGatewayRootNodeAllowsListenerSet(t *testing.T) {
 	none := gatewayv1.NamespacesFromNone
 	all := gatewayv1.NamespacesFromAll
 	same := gatewayv1.NamespacesFromSame
@@ -221,7 +221,12 @@ func Test_gatewayAllowsListenerSet(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			assert.Equal(t, test.want, gatewayAllowsListenerSet(test.gw, test.ls, namespaces))
+			root := &GatewayRootNode{GatewayClass: &GatewayClassNode{Gateway: &GatewayNode{
+				Gateway:    &test.gw,
+				Namespaces: namespaces,
+			}}}
+			listenerSetNode := &ListenerSetNode{ListenerSet: &test.ls}
+			assert.Equal(t, test.want, root.allowsListenerSet(listenerSetNode))
 		})
 	}
 }
