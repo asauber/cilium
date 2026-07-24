@@ -226,28 +226,6 @@ func isListenerSetAllowed(
 	return false
 }
 
-func gatewayFQR(gw *gatewayv1.Gateway) model.FullyQualifiedResource {
-	return model.FullyQualifiedResource{
-		Name:      gw.GetName(),
-		Namespace: gw.GetNamespace(),
-		Group:     gatewayv1.GroupVersion.Group,
-		Version:   gatewayv1.GroupVersion.Version,
-		Kind:      "Gateway",
-		UID:       string(gw.GetUID()),
-	}
-}
-
-func listenerSetFQR(ls *gatewayv1.ListenerSet) model.FullyQualifiedResource {
-	return model.FullyQualifiedResource{
-		Name:      ls.GetName(),
-		Namespace: ls.GetNamespace(),
-		Group:     gatewayv1.GroupVersion.Group,
-		Version:   gatewayv1.GroupVersion.Version,
-		Kind:      "ListenerSet",
-		UID:       string(ls.GetUID()),
-	}
-}
-
 // sortListenerSets sorts ListenerSets by precedence rules
 func sortListenerSets(sets []gatewayv1.ListenerSet) {
 	sort.Slice(sets, func(i, j int) bool {
@@ -260,14 +238,6 @@ func sortListenerSets(sets []gatewayv1.ListenerSet) {
 		nj := sets[j].GetNamespace() + "/" + sets[j].GetName()
 		return ni < nj
 	})
-}
-
-func sortedListenerEntries(entries []gatewayv1.ListenerEntry) []gatewayv1.ListenerEntry {
-	sorted := append([]gatewayv1.ListenerEntry(nil), entries...)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Name < sorted[j].Name
-	})
-	return sorted
 }
 
 func deduplicateHTTPRoutes(routes []gatewayv1.HTTPRoute) []gatewayv1.HTTPRoute {

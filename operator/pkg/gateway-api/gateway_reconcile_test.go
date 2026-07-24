@@ -26,6 +26,7 @@ import (
 
 	"github.com/cilium/cilium/operator/pkg/gateway-api/helpers"
 	"github.com/cilium/cilium/operator/pkg/gateway-api/indexers"
+	"github.com/cilium/cilium/operator/pkg/model/ingestion"
 	"github.com/cilium/cilium/operator/pkg/model/translation"
 	gatewayApiTranslation "github.com/cilium/cilium/operator/pkg/model/translation/gateway-api"
 	ciliumv2 "github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2"
@@ -1068,9 +1069,21 @@ func Test_gatewayReconciler_setListenerStatus(t *testing.T) {
 					Build(),
 			}
 
-			gotStatus, err := r.setListenerStatus(
+			listenerContexts := make([]ingestion.ListenerWithContext, 0, len(gw.Spec.Listeners))
+			for _, listener := range gw.Spec.Listeners {
+				listenerContexts = append(listenerContexts, ingestion.ListenerWithContext{
+					Listener:   listener,
+					Source:     helpers.GatewayListenerSource(gw),
+					SourceUID:  string(gw.GetUID()),
+					Generation: gw.GetGeneration(),
+					Status:     helpers.NewGatewayListenerStatus(listener),
+				})
+			}
+			r.validateGatewayListenerStatuses(
 				t.Context(),
 				gw,
+				listenerContexts,
+				nil,
 				&gatewayv1.HTTPRouteList{},
 				&gatewayv1.TLSRouteList{},
 				&gatewayv1.GRPCRouteList{},
@@ -1078,7 +1091,7 @@ func Test_gatewayReconciler_setListenerStatus(t *testing.T) {
 				&gatewayv1.UDPRouteList{},
 				helpers.NewNamespaceLabelIndex(nil),
 			)
-			require.NoError(t, err)
+			gotStatus := r.setListenerStatus(gw, listenerContexts)
 			require.Equal(t, tt.wantStatus, gotStatus)
 
 			for name, wantCond := range tt.wantListeners {

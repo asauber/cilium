@@ -34,13 +34,16 @@ const (
 type ListenerWithContext struct {
 	gatewayv1.Listener
 	// Source is where this listener appears: Gateway or ListenerSet
-	Source model.FullyQualifiedResource
+	Source     helpers.ListenerSource
+	SourceUID  string
+	Generation int64
+	Status     helpers.GatewayListenerStatus
 
 	// AllowedNamespaces is the set of namespaces allowed for Route attachment
 	AllowedNamespaces map[string]struct{}
 }
 
-func parentRefMatchesSource(parent gatewayv1.ParentReference, source model.FullyQualifiedResource, routeNamespace string) bool {
+func parentRefMatchesSource(parent gatewayv1.ParentReference, source helpers.ListenerSource, routeNamespace string) bool {
 	parentKind := "Gateway"
 	if parent.Kind != nil {
 		parentKind = string(*parent.Kind)
@@ -76,6 +79,17 @@ func (l *ListenerWithContext) routeAllowedByParent(parentRefs []gatewayv1.Parent
 	}
 
 	return false
+}
+
+func listenerModelSource(listener ListenerWithContext) model.FullyQualifiedResource {
+	return model.FullyQualifiedResource{
+		Name:      listener.Source.Name,
+		Namespace: listener.Source.Namespace,
+		Group:     listener.Source.Group,
+		Version:   listener.Source.Version,
+		Kind:      listener.Source.Kind,
+		UID:       listener.SourceUID,
+	}
 }
 
 func (l *ListenerWithContext) FilterHTTPRoutes(routes []gatewayv1.HTTPRoute) []gatewayv1.HTTPRoute {
@@ -181,18 +195,12 @@ func GatewayAPI(log *slog.Logger, input Input) *model.Model {
 	// When MergedListeners is not provided, build it from the direct
 	// Gateway-listeners
 	if listeners == nil {
-		gwSource := model.FullyQualifiedResource{
-			Name:      input.Gateway.GetName(),
-			Namespace: input.Gateway.GetNamespace(),
-			Group:     gatewayv1.GroupVersion.Group,
-			Version:   gatewayv1.GroupVersion.Version,
-			Kind:      "Gateway",
-			UID:       string(input.Gateway.GetUID()),
-		}
+		gwSource := helpers.GatewayListenerSource(&input.Gateway)
 		for _, l := range input.Gateway.Spec.Listeners {
 			listeners = append(listeners, ListenerWithContext{
-				Listener: l,
-				Source:   gwSource,
+				Listener:  l,
+				Source:    gwSource,
+				SourceUID: string(input.Gateway.GetUID()),
 			})
 		}
 	}
@@ -231,7 +239,7 @@ func GatewayAPI(log *slog.Logger, input Input) *model.Model {
 			httpRoutes = append(httpRoutes, toGRPCRoutes(l.Listener, l.Source.Namespace, namespaceLabels, namespacesPreFiltered, listenerHostnamesByProtocol, filteredGRPCRoutes, input.Services, input.ServiceImports, input.ReferenceGrants)...)
 			m.HTTP = append(m.HTTP, model.HTTPListener{
 				Name:                       string(l.Name),
-				Sources:                    []model.FullyQualifiedResource{l.Source},
+				Sources:                    []model.FullyQualifiedResource{listenerModelSource(l)},
 				Port:                       uint32(l.Port),
 				Hostname:                   toHostname(l.Hostname),
 				TLS:                        toTLS(l.TLS, input.ReferenceGrants, l.Source.Namespace, schema.GroupVersionKind{Group: l.Source.Group, Version: l.Source.Version, Kind: l.Source.Kind}),
@@ -244,7 +252,7 @@ func GatewayAPI(log *slog.Logger, input Input) *model.Model {
 			if l.Protocol == gatewayv1.TLSProtocolType {
 				m.TLSPassthrough = append(m.TLSPassthrough, model.TLSPassthroughListener{
 					Name:           string(l.Name),
-					Sources:        []model.FullyQualifiedResource{l.Source},
+					Sources:        []model.FullyQualifiedResource{listenerModelSource(l)},
 					Port:           uint32(l.Port),
 					Hostname:       toHostname(l.Hostname),
 					Routes:         toTLSRoutes(l.Listener, l.Source.Namespace, namespaceLabels, namespacesPreFiltered, listenerHostnamesByProtocol, l.FilterTLSRoutes(input.TLSRoutes), input.Services, input.ServiceImports, input.ReferenceGrants),
@@ -257,7 +265,7 @@ func GatewayAPI(log *slog.Logger, input Input) *model.Model {
 			namespacesPreFiltered := l.AllowedNamespaces != nil
 			m.L4 = append(m.L4, model.L4Listener{
 				Name:           string(l.Name),
-				Sources:        []model.FullyQualifiedResource{l.Source},
+				Sources:        []model.FullyQualifiedResource{listenerModelSource(l)},
 				Port:           uint32(l.Port),
 				Protocol:       model.L4ProtocolTCP,
 				Routes:         toTCPRoutes(l.Listener, l.Source.Namespace, namespaceLabels, namespacesPreFiltered, l.FilterTCPRoutes(input.TCPRoutes), input.Services, input.ServiceImports, input.ReferenceGrants),
@@ -269,7 +277,7 @@ func GatewayAPI(log *slog.Logger, input Input) *model.Model {
 			namespacesPreFiltered := l.AllowedNamespaces != nil
 			m.L4 = append(m.L4, model.L4Listener{
 				Name:           string(l.Name),
-				Sources:        []model.FullyQualifiedResource{l.Source},
+				Sources:        []model.FullyQualifiedResource{listenerModelSource(l)},
 				Port:           uint32(l.Port),
 				Protocol:       model.L4ProtocolUDP,
 				Routes:         toUDPRoutes(l.Listener, l.Source.Namespace, namespaceLabels, namespacesPreFiltered, l.FilterUDPRoutes(input.UDPRoutes), input.Services, input.ServiceImports, input.ReferenceGrants),
