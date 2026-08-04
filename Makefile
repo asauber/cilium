@@ -650,6 +650,13 @@ gateway-api-conformance: ## Run Gateway API conformance tests.
 		--cleanup-base-resources=false \
 	| $(GOTEST_FORMATTER)
 
+.PHONY: gateway-api-conformance-rebuild
+gateway-api-conformance-rebuild: ## Recreate a local cluster and run Gateway API conformance tests.
+	$(MAKE) kind-down || true
+	$(MAKE) kind
+	$(MAKE) kind-servicemesh-install-cilium-fast WAIT_DURATION=5m
+	$(MAKE) gateway-api-conformance
+
 CILIUM_VERSION ?= $(shell git describe --tags --exact-match 2>/dev/null || echo "v.0.0.0-`git --no-pager log -1 --pretty='format:%cd-%h' --date='format:%Y%m%d%H%M%S'`" )
 gateway-api-conformance-report: ## Run Gateway API conformance tests with a conformance report.
 	@$(ECHO_CHECK) running Gateway API conformance tests with conformance report...
