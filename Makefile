@@ -614,10 +614,28 @@ KIND_NET_CIDR ?= $(shell docker network inspect kind-cilium -f '{{json .IPAM.Con
 GATEWAY_API_CONFORMANCE_USABLE_NETWORK_ADDRESSES?=$(shell echo ${KIND_NET_CIDR} | sed "s@0.0/16@255.206@")
 GATEWAY_API_CONFORMANCE_UNUSABLE_NETWORK_ADDRESSES?=$(shell echo ${KIND_NET_CIDR} | sed "s@0.0/16@255.216@")
 GATEWAY_API_CONFORMANCE_TEST_NAME ?= TestConformance
+GATEWAY_API_DIR ?=
 gateway-api-conformance: ## Run Gateway API conformance tests.
 	@$(ECHO_CHECK) running Gateway API conformance tests...
+	$(QUIET)set -e; \
+	modfile_flags=; \
+	if [ -n "$(GATEWAY_API_DIR)" ]; then \
+		if [ ! -f "$(GATEWAY_API_DIR)/go.mod" ] || [ ! -f "$(GATEWAY_API_DIR)/conformance/go.mod" ]; then \
+			echo "GATEWAY_API_DIR must contain go.mod and conformance/go.mod" >&2; \
+			exit 1; \
+		fi; \
+		gateway_api_dir="$$(cd "$(GATEWAY_API_DIR)" && pwd)"; \
+		tmpdir="$$(mktemp -d)"; \
+		trap 'rm -rf "$$tmpdir"' EXIT; \
+		cp "$(CURDIR)/go.mod" "$$tmpdir/cilium.mod"; \
+		cp "$(CURDIR)/go.sum" "$$tmpdir/cilium.sum"; \
+		$(GO) mod edit -modfile="$$tmpdir/cilium.mod" \
+			-replace=sigs.k8s.io/gateway-api="$$gateway_api_dir" \
+			-replace=sigs.k8s.io/gateway-api/conformance="$$gateway_api_dir/conformance"; \
+		modfile_flags="-mod=mod -modfile=$$tmpdir/cilium.mod"; \
+	fi; \
 	GATEWAY_API_CONFORMANCE_TESTS=1 \
-	$(GO_TEST) $(GO_TEST_FLAGS) -p 4 -v ./operator/pkg/gateway-api \
+	$(GO_TEST) $(GO_TEST_FLAGS) $$modfile_flags -p 4 -v ./operator/pkg/gateway-api \
 		$(GATEWAY_TEST_FLAGS) \
 		-test.run $(GATEWAY_API_CONFORMANCE_TEST_NAME) \
 		-test.timeout=29m \
@@ -626,6 +644,13 @@ gateway-api-conformance: ## Run Gateway API conformance tests.
 		--allow-crds-mismatch\
 		--cleanup-base-resources=false \
 	| $(GOTEST_FORMATTER)
+
+.PHONY: gateway-api-conformance-rebuild
+gateway-api-conformance-rebuild: ## Recreate a local cluster and run Gateway API conformance tests.
+	$(MAKE) kind-down || true
+	$(MAKE) kind
+	$(MAKE) kind-servicemesh-install-cilium-fast WAIT_DURATION=5m
+	$(MAKE) gateway-api-conformance
 
 CILIUM_VERSION ?= $(shell git describe --tags --exact-match 2>/dev/null || echo "v.0.0.0-`git --no-pager log -1 --pretty='format:%cd-%h' --date='format:%Y%m%d%H%M%S'`" )
 gateway-api-conformance-report: ## Run Gateway API conformance tests with a conformance report.
